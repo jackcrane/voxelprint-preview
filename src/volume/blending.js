@@ -49,9 +49,10 @@ export const createBlendedVolumeTexture = (
         blended[base] = clampByte((accum.r / accum.colorWeight) * 255);
         blended[base + 1] = clampByte((accum.g / accum.colorWeight) * 255);
         blended[base + 2] = clampByte((accum.b / accum.colorWeight) * 255);
-        blended[base + 3] = clampByte(
-          (accum.alpha / accum.alphaWeight) * 255
-        );
+
+        const rawAlpha = (accum.alpha / accum.alphaWeight) * 255;
+        blended[base + 3] =
+          rawAlpha <= 0 ? 0 : Math.max(1, clampByte(rawAlpha));
       }
     }
   }
