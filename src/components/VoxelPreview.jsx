@@ -661,7 +661,7 @@ const CrossSectionFill = ({ scale, yMax }) => {
         depthTest
         depthWrite={false}
         toneMapped={false}
-        side={THREE.DoubleSide}
+        side={THREE.FrontSide}
       />
     </mesh>
   );
