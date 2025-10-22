@@ -291,6 +291,7 @@ const volumeFragmentShader = `
   uniform float u_clearIndex;
   uniform float u_clearAlphaScale;
   uniform mat4 u_modelMatrixInverse;
+  uniform float u_yMax;
 
   in vec3 vPosition;
 
@@ -355,7 +356,7 @@ const volumeFragmentShader = `
       if (
         texCoord.x >= 0.0 && texCoord.x <= 1.0 &&
         texCoord.y >= 0.0 && texCoord.y <= 1.0 &&
-        texCoord.z >= 0.0 && texCoord.z <= 1.0
+        texCoord.z >= 0.0 && texCoord.z <= u_yMax
       ) {
         float raw = texture(u_volume, texCoord).r;
         float paletteIndex = clamp(floor(raw * 255.0 + 0.5), 0.0, paletteSize - 1.0);
@@ -393,6 +394,7 @@ const VolumeMesh = ({
   isInteracting,
   previewSteps,
   fullSteps,
+  yMax,
 }) => {
   const meshRef = useRef();
   const material = useMemo(() => {
@@ -411,6 +413,7 @@ const VolumeMesh = ({
         },
         u_clearAlphaScale: { value: CLEAR_ALPHA_SCALE },
         u_modelMatrixInverse: { value: new THREE.Matrix4() },
+        u_yMax: { value: 1 },
       },
       vertexShader: volumeVertexShader,
       fragmentShader: volumeFragmentShader,
@@ -447,6 +450,12 @@ const VolumeMesh = ({
     }
   }, [material, isInteracting, previewSteps, fullSteps]);
 
+  useEffect(() => {
+    if (material) {
+      material.uniforms.u_yMax.value = yMax;
+    }
+  }, [material, yMax]);
+
   if (!resources || !material) {
     return null;
   }
@@ -464,6 +473,7 @@ const VolumeStage = ({
   isInteracting,
   previewSteps,
   fullSteps,
+  yMax,
 }) => {
   const [resources, setResources] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -555,6 +565,7 @@ const VolumeStage = ({
           isInteracting={isInteracting}
           previewSteps={previewSteps}
           fullSteps={fullSteps}
+          yMax={yMax}
         />
       )}
       {!resources && loading && (
@@ -651,6 +662,7 @@ export const VoxelPreview = ({ config }) => {
 
   const [isInteracting, setIsInteracting] = useState(false);
   const interactionTimeout = useRef(null);
+  const [yMax, setYMax] = useState(1);
 
   useEffect(() => {
     return () => {
@@ -673,56 +685,103 @@ export const VoxelPreview = ({ config }) => {
   };
 
   return (
-    <Canvas
-      camera={{
-        position: camPos,
-        fov: 50,
-        near: 0.01,
-        far: Math.max(diag * 6, 10_000),
-      }}
-      style={{ width: "100%", height: "80vh", background: "#ffffff" }}
-      onCreated={({ gl, scene, camera }) => {
-        gl.setClearColor("#ffffff", 1);
-        scene.background = new THREE.Color("#ffffff");
-        camera.lookAt(0, 0, 0);
+    <div
+      style={{
+        display: "flex",
+        alignItems: "stretch",
+        gap: 16,
       }}
     >
-      <OrbitControls
-        makeDefault
-        target={[0, 0, 0]}
-        onStart={markInteracting}
-        onChange={markInteracting}
-        onEnd={markInteracting}
-      />
+      <div style={{ flex: "1 1 auto" }}>
+        <Canvas
+          camera={{
+            position: camPos,
+            fov: 50,
+            near: 0.01,
+            far: Math.max(diag * 6, 10_000),
+          }}
+          style={{ width: "100%", height: "80vh", background: "#ffffff" }}
+          onCreated={({ gl, scene, camera }) => {
+            gl.setClearColor("#ffffff", 1);
+            scene.background = new THREE.Color("#ffffff");
+            camera.lookAt(0, 0, 0);
+          }}
+        >
+          <OrbitControls
+            makeDefault
+            target={[0, 0, 0]}
+            onStart={markInteracting}
+            onChange={markInteracting}
+            onEnd={markInteracting}
+          />
 
-      <Environment preset="city" />
-      <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-        <GizmoViewport
-          axisColors={["#9d4b4b", "#2f7f4f", "#3b5b9d"]}
-          labelColor="white"
+          <Environment preset="city" />
+          <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
+            <GizmoViewport
+              axisColors={["#9d4b4b", "#2f7f4f", "#3b5b9d"]}
+              labelColor="white"
+            />
+          </GizmoHelper>
+
+          <Grid
+            cellSize={0.01}
+            sectionSize={Math.max(widthM, heightM) * 2}
+            cellColor="#6f6f6f"
+            sectionColor="#9d4b4b"
+            fadeDistance={1000}
+            position={[0, 0, 0]}
+            infiniteGrid
+          />
+
+          <ambientLight intensity={1} />
+          <directionalLight position={[2, 4, 3]} intensity={1} />
+
+          <VolumeStage
+            slices={slices}
+            scale={volumeScale}
+            isInteracting={isInteracting}
+            previewSteps={previewSteps}
+            fullSteps={fullSteps}
+            yMax={yMax}
+          />
+        </Canvas>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          paddingRight: 8,
+        }}
+      >
+        <span style={{ fontSize: 12, color: "#3f3f3f", marginBottom: 8 }}>
+          Top
+        </span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={yMax}
+          onChange={(event) => {
+            const raw = parseFloat(event.target.value);
+            if (Number.isFinite(raw)) {
+              setYMax(Math.max(0, Math.min(1, raw)));
+            }
+          }}
+          style={{
+            writingMode: "bt-lr",
+            WebkitAppearance: "slider-vertical",
+            width: "auto",
+            height: "80vh",
+          }}
+          aria-label="Y-axis cross-section"
         />
-      </GizmoHelper>
-
-      <Grid
-        cellSize={0.01}
-        sectionSize={Math.max(widthM, heightM) * 2}
-        cellColor="#6f6f6f"
-        sectionColor="#9d4b4b"
-        fadeDistance={1000}
-        position={[0, 0, 0]}
-        infiniteGrid
-      />
-
-      <ambientLight intensity={1} />
-      <directionalLight position={[2, 4, 3]} intensity={1} />
-
-      <VolumeStage
-        slices={slices}
-        scale={volumeScale}
-        isInteracting={isInteracting}
-        previewSteps={previewSteps}
-        fullSteps={fullSteps}
-      />
-    </Canvas>
+        <span style={{ fontSize: 12, color: "#3f3f3f", marginTop: 8 }}>
+          Bottom
+        </span>
+      </div>
+    </div>
   );
 };
