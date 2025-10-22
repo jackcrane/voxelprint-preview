@@ -17,14 +17,22 @@ import {
 } from "@react-three/drei";
 
 const inchToMeter = 0.0254;
-const MATERIAL_COLOR_MAP = {
-  "0 255 255 255": [0, 255, 255, 140], // VeroCY-V
-  "255 0 255 255": [255, 0, 255, 200], // VeroMGT-V
-  "255 255 0 255": [255, 255, 0, 100], // VeroYL-C
-  "0 0 0 255": [0, 0, 0, 0], // VOID
-  "137 137 137 255": [137, 137, 137, 1], // UltraClear
-  "255 255 255 255": [255, 255, 255, 255], // VeroUltraWhite
-};
+const MATERIAL_DEFINITIONS = [
+  { key: "0 255 255 255", rgba: [0, 255, 255, 140], name: "VeroCY-V" },
+  { key: "255 0 255 255", rgba: [255, 0, 255, 200], name: "VeroMGT-V" },
+  { key: "255 255 0 255", rgba: [255, 255, 0, 100], name: "VeroYL-C" },
+  { key: "0 0 0 255", rgba: [0, 0, 0, 0], name: "VOID" },
+  { key: "137 137 137 255", rgba: [137, 137, 137, 1], name: "UltraClear" },
+  { key: "255 255 255 255", rgba: [255, 255, 255, 255], name: "VeroUltraWhite" },
+];
+const MATERIAL_COLOR_MAP = MATERIAL_DEFINITIONS.reduce((acc, { key, rgba }) => {
+  acc[key] = rgba;
+  return acc;
+}, {});
+const MATERIAL_LOOKUP = MATERIAL_DEFINITIONS.reduce((acc, entry) => {
+  acc[entry.key] = entry;
+  return acc;
+}, {});
 
 const CLEAR_MATERIAL_KEY = "137 137 137 255";
 const CLEAR_PALETTE_ENTRY_KEY =
@@ -108,9 +116,9 @@ const decodeSlice = async (blob) => {
   };
 };
 
-const mapMaterialColor = (r, g, b, a, localMissing) => {
+const mapMaterialColor = (r, g, b, a, localMissing, materialColorMap) => {
   const key = `${r} ${g} ${b} ${a}`;
-  const mapped = MATERIAL_COLOR_MAP[key];
+  const mapped = materialColorMap[key];
   if (mapped) return mapped;
 
   if (
@@ -250,7 +258,11 @@ const createBlendedVolumeTexture = (
   return texture;
 };
 
-const buildVolumeResources = async (slices, onProgress) => {
+const buildVolumeResources = async (
+  slices,
+  onProgress,
+  materialColorMap = MATERIAL_COLOR_MAP
+) => {
   if (!slices?.length) return null;
 
   missingColorSamples.clear();
@@ -259,7 +271,7 @@ const buildVolumeResources = async (slices, onProgress) => {
   const palette = [];
   const paletteLookup = new Map();
 
-  Object.values(MATERIAL_COLOR_MAP).forEach((rgba) => {
+  Object.values(materialColorMap).forEach((rgba) => {
     ensurePaletteEntry(paletteLookup, palette, rgba);
   });
 
@@ -330,7 +342,8 @@ const buildVolumeResources = async (slices, onProgress) => {
           pixels[pixelIndex + 1],
           pixels[pixelIndex + 2],
           pixels[pixelIndex + 3],
-          localMissing
+          localMissing,
+          materialColorMap
         );
         const paletteIndex = ensurePaletteEntry(paletteLookup, palette, mapped);
         data[rowBase + targetX] = paletteIndex;
@@ -424,6 +437,7 @@ const buildVolumeResources = async (slices, onProgress) => {
       depth: targetDepth,
     },
     blendedVolumeTexture,
+    missingColors: Array.from(missingColorSamples),
   };
 };
 
@@ -812,6 +826,176 @@ const CrossSectionFill = ({ scale, yMax }) => {
   );
 };
 
+const parseColorKey = (key) =>
+  key.split(" ").map((chunk) => {
+    const value = Number.parseInt(chunk, 10);
+    return Number.isFinite(value) ? value : 0;
+  });
+
+const MaterialMappingModal = ({
+  missingColors,
+  selections,
+  onSelect,
+  onConfirm,
+  onCancel,
+  materials,
+  canConfirm,
+}) => {
+  if (!missingColors.length) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0, 0, 0, 0.55)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
+    >
+      <div
+        style={{
+          background: "#ffffff",
+          padding: "20px 24px",
+          borderRadius: 8,
+          width: 420,
+          maxWidth: "90vw",
+          boxShadow: "0 16px 32px rgba(0, 0, 0, 0.25)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 18, fontWeight: 600, color: "#1f1f1f" }}>
+            Map Unknown Materials
+          </span>
+          <span style={{ fontSize: 13, color: "#4f4f4f" }}>
+            Choose a known material that should replace each unmapped color.
+          </span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {missingColors.map((key) => {
+            const [r, g, b, a] = parseColorKey(key);
+            const rgbaPreview = `rgba(${r}, ${g}, ${b}, ${Math.round(
+              (a / 255) * 100
+            ) / 100})`;
+            return (
+              <div
+                key={key}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  padding: "10px 12px",
+                  borderRadius: 6,
+                  background: "#f7f7f7",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "#1f1f1f",
+                    }}
+                  >
+                    Source: {key}
+                  </span>
+                  <span
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 4,
+                      background: rgbaPreview,
+                      border: "1px solid rgba(0, 0, 0, 0.2)",
+                    }}
+                  />
+                </div>
+                <label
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                    fontSize: 12,
+                    color: "#3f3f3f",
+                  }}
+                >
+                  <span>Map to material</span>
+                  <select
+                    value={selections[key] || ""}
+                    onChange={(event) => onSelect(key, event.target.value)}
+                    style={{
+                      padding: "6px 8px",
+                      borderRadius: 4,
+                      border: "1px solid #d0d0d0",
+                      fontSize: 12,
+                    }}
+                  >
+                    <option value="" disabled>
+                      Select a material…
+                    </option>
+                    {materials.map(({ key: materialKey, name }) => (
+                      <option key={materialKey} value={materialKey}>
+                        {name} ({materialKey})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            );
+          })}
+        </div>
+        <div
+          style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}
+        >
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 4,
+              border: "1px solid #c0c0c0",
+              background: "#ffffff",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!canConfirm}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 4,
+              border: "none",
+              background: canConfirm ? "#2463eb" : "#9fb4f5",
+              color: "#ffffff",
+              fontSize: 12,
+              cursor: canConfirm ? "pointer" : "not-allowed",
+            }}
+          >
+            Apply mapping
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const VolumeStage = ({
   slices,
   scale,
@@ -821,6 +1005,8 @@ const VolumeStage = ({
   yMax,
   onStatsChange,
   blendEnabled,
+  materialColorMap,
+  onMissingMaterials,
 }) => {
   const [resources, setResources] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -847,11 +1033,17 @@ const VolumeStage = ({
     };
 
     disposeCurrent();
+    if (onMissingMaterials) {
+      onMissingMaterials([]);
+    }
     setProgress(0);
     setError(null);
 
     if (!slices || !slices.length) {
       setLoading(false);
+      if (onMissingMaterials) {
+        onMissingMaterials([]);
+      }
       return () => {
         cancelled = true;
       };
@@ -861,11 +1053,15 @@ const VolumeStage = ({
 
     const load = async () => {
       try {
-        const built = await buildVolumeResources(slices, (pct) => {
-          if (!cancelled) {
-            setProgress(pct);
-          }
-        });
+        const built = await buildVolumeResources(
+          slices,
+          (pct) => {
+            if (!cancelled) {
+              setProgress(pct);
+            }
+          },
+          materialColorMap
+        );
 
         if (!built) {
           throw new Error("Volume data generation returned empty result.");
@@ -883,6 +1079,9 @@ const VolumeStage = ({
         resourcesRef.current = built;
         setResources(built);
         setProgress(100);
+        if (onMissingMaterials) {
+          onMissingMaterials(built.missingColors || []);
+        }
         if (onStatsChange) {
           const { voxelDimensions, paletteSize } = built;
           const voxelCount =
@@ -902,6 +1101,9 @@ const VolumeStage = ({
         console.error("[Volume] Failed to construct 3D texture", err);
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
+          if (onMissingMaterials) {
+            onMissingMaterials([]);
+          }
         }
       } finally {
         if (!cancelled) {
@@ -915,7 +1117,7 @@ const VolumeStage = ({
     return () => {
       cancelled = true;
     };
-  }, [slices]);
+  }, [slices, materialColorMap, onMissingMaterials]);
 
   useEffect(() => {
     return () => {
@@ -1055,6 +1257,12 @@ export const VoxelPreview = ({ config }) => {
   const [stats, setStats] = useState(null);
   const [fps, setFps] = useState(null);
   const [blendEnabled, setBlendEnabled] = useState(true);
+  const [materialColorMap, setMaterialColorMap] = useState(() => ({
+    ...MATERIAL_COLOR_MAP,
+  }));
+  const [pendingMissingColors, setPendingMissingColors] = useState([]);
+  const [materialSelectionDraft, setMaterialSelectionDraft] = useState({});
+  const [mappingModalVisible, setMappingModalVisible] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -1063,6 +1271,70 @@ export const VoxelPreview = ({ config }) => {
         interactionTimeout.current = null;
       }
     };
+  }, []);
+
+  const handleMissingMaterials = useCallback((missingKeys) => {
+    if (missingKeys && missingKeys.length) {
+      setPendingMissingColors(missingKeys);
+      setMaterialSelectionDraft((prev) => {
+        const next = {};
+        missingKeys.forEach((key) => {
+          next[key] = prev[key] || "";
+        });
+        return next;
+      });
+      setMappingModalVisible(true);
+    } else {
+      setPendingMissingColors([]);
+      setMaterialSelectionDraft({});
+      setMappingModalVisible(false);
+    }
+  }, []);
+
+  const handleMaterialSelectionChange = useCallback((missingKey, mappedKey) => {
+    setMaterialSelectionDraft((prev) => ({
+      ...prev,
+      [missingKey]: mappedKey,
+    }));
+  }, []);
+
+  const canApplyMaterialMappings = useMemo(() => {
+    if (!pendingMissingColors.length) {
+      return false;
+    }
+    return pendingMissingColors.every(
+      (key) => materialSelectionDraft[key] && materialSelectionDraft[key].length
+    );
+  }, [pendingMissingColors, materialSelectionDraft]);
+
+  const handleApplyMaterialMappings = useCallback(() => {
+    if (!pendingMissingColors.length) {
+      return;
+    }
+    setMaterialColorMap((prev) => {
+      const next = { ...prev };
+      pendingMissingColors.forEach((missingKey) => {
+        const mappedKey = materialSelectionDraft[missingKey];
+        if (!mappedKey) {
+          return;
+        }
+        const source =
+          prev[mappedKey] ||
+          MATERIAL_COLOR_MAP[mappedKey] ||
+          MATERIAL_LOOKUP[mappedKey]?.rgba;
+        if (source) {
+          next[missingKey] = [...source];
+        }
+      });
+      return next;
+    });
+    setPendingMissingColors([]);
+    setMaterialSelectionDraft({});
+    setMappingModalVisible(false);
+  }, [materialSelectionDraft, pendingMissingColors]);
+
+  const handleModalClose = useCallback(() => {
+    setMappingModalVisible(false);
   }, []);
 
   const markInteracting = () => {
@@ -1102,218 +1374,278 @@ export const VoxelPreview = ({ config }) => {
     return "Balanced";
   }, [qualityPct]);
 
+  const materialsForSelection = MATERIAL_DEFINITIONS;
+  const showMappingModal =
+    mappingModalVisible && pendingMissingColors.length > 0;
+
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "stretch",
-        gap: 16,
-      }}
-    >
-      <div style={{ flex: "1 1 auto" }}>
-        <Canvas
-          camera={{
-            position: camPos,
-            fov: 50,
-            near: 0.01,
-            far: Math.max(diag * 6, 10_000),
-          }}
-          style={{ width: "100%", height: "80vh", background: "#ffffff" }}
-          onCreated={({ gl, scene, camera }) => {
-            gl.setClearColor("#ffffff", 1);
-            scene.background = new THREE.Color("#ffffff");
-            camera.lookAt(0, 0, 0);
-          }}
-        >
-          <OrbitControls
-            makeDefault
-            target={[0, 0, 0]}
-            onStart={markInteracting}
-            onChange={markInteracting}
-            onEnd={markInteracting}
-          />
-
-          <Environment preset="city" />
-          <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-            <GizmoViewport
-              axisColors={["#9d4b4b", "#2f7f4f", "#3b5b9d"]}
-              labelColor="white"
-            />
-          </GizmoHelper>
-
-          {/* <Grid
-            cellSize={0.01}
-            sectionSize={Math.max(widthM, heightM) * 2}
-            cellColor="#6f6f6f"
-            sectionColor="#9d4b4b"
-            fadeDistance={1000}
-            position={[0, 0, 0]}
-            infiniteGrid
-          /> */}
-
-          <ambientLight intensity={1} />
-          <directionalLight position={[2, 4, 3]} intensity={1} />
-
-          <FrameRateTracker onUpdate={handleFpsUpdate} />
-          <VolumeStage
-            slices={slices}
-            scale={volumeScale}
-            isInteracting={isInteracting}
-            previewSteps={previewSteps}
-            fullSteps={fullSteps}
-            yMax={yMax}
-            onStatsChange={setStats}
-            blendEnabled={blendEnabled}
-          />
-        </Canvas>
-      </div>
+    <>
+      {showMappingModal && (
+        <MaterialMappingModal
+          missingColors={pendingMissingColors}
+          selections={materialSelectionDraft}
+          onSelect={handleMaterialSelectionChange}
+          onConfirm={handleApplyMaterialMappings}
+          onCancel={handleModalClose}
+          materials={materialsForSelection}
+          canConfirm={canApplyMaterialMappings}
+        />
+      )}
       <div
         style={{
           display: "flex",
-          flexDirection: "column",
-          justifyContent: "flex-start",
           alignItems: "stretch",
-          padding: "0 8px",
           gap: 16,
-          width: 220,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            flex: "1 1 auto",
-          }}
-        >
-          <span style={{ fontSize: 12, color: "#3f3f3f", marginBottom: 8 }}>
-            Top
-          </span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={yMax}
-            onChange={(event) => {
-              const raw = parseFloat(event.target.value);
-              if (Number.isFinite(raw)) {
-                setYMax(Math.max(0, Math.min(1, raw)));
-              }
+        <div style={{ flex: "1 1 auto" }}>
+          <Canvas
+            camera={{
+              position: camPos,
+              fov: 50,
+              near: 0.01,
+              far: Math.max(diag * 6, 10_000),
             }}
-            style={{
-              writingMode: "bt-lr",
-              WebkitAppearance: "slider-vertical",
-              width: "auto",
-              height: "60vh",
+            style={{ width: "100%", height: "80vh", background: "#ffffff" }}
+            onCreated={({ gl, scene, camera }) => {
+              gl.setClearColor("#ffffff", 1);
+              scene.background = new THREE.Color("#ffffff");
+              camera.lookAt(0, 0, 0);
             }}
-            aria-label="Y-axis cross-section"
-          />
-          <span style={{ fontSize: 12, color: "#3f3f3f", marginTop: 8 }}>
-            Bottom
-          </span>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-          }}
-        >
-          <label
-            htmlFor="quality-slider"
-            style={{ fontSize: 13, color: "#1f1f1f", fontWeight: 600 }}
           >
-            Quality
-          </label>
-          <input
-            id="quality-slider"
-            type="range"
-            min="50"
-            max="150"
-            step="5"
-            value={qualityPct}
-            onChange={(event) => {
-              const raw = parseFloat(event.target.value);
-              if (Number.isFinite(raw)) {
-                setQualityPct(Math.max(50, Math.min(150, raw)));
-              }
-            }}
-          />
-          <span style={{ fontSize: 12, color: "#3f3f3f" }}>
-            {qualityLabel} · {qualityPct}% · {fullSteps} steps
-          </span>
-        </div>
+            <OrbitControls
+              makeDefault
+              target={[0, 0, 0]}
+              onStart={markInteracting}
+              onChange={markInteracting}
+              onEnd={markInteracting}
+            />
 
+            <Environment preset="city" />
+            <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
+              <GizmoViewport
+                axisColors={["#9d4b4b", "#2f7f4f", "#3b5b9d"]}
+                labelColor="white"
+              />
+            </GizmoHelper>
+
+            {/* <Grid
+              cellSize={0.01}
+              sectionSize={Math.max(widthM, heightM) * 2}
+              cellColor="#6f6f6f"
+              sectionColor="#9d4b4b"
+              fadeDistance={1000}
+              position={[0, 0, 0]}
+              infiniteGrid
+            /> */}
+
+            <ambientLight intensity={1} />
+            <directionalLight position={[2, 4, 3]} intensity={1} />
+
+            <FrameRateTracker onUpdate={handleFpsUpdate} />
+            <VolumeStage
+              slices={slices}
+              scale={volumeScale}
+              isInteracting={isInteracting}
+              previewSteps={previewSteps}
+              fullSteps={fullSteps}
+              yMax={yMax}
+              onStatsChange={setStats}
+              blendEnabled={blendEnabled}
+              materialColorMap={materialColorMap}
+              onMissingMaterials={handleMissingMaterials}
+            />
+          </Canvas>
+        </div>
         <div
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: 4,
+            justifyContent: "flex-start",
+            alignItems: "stretch",
+            padding: "0 8px",
+            gap: 16,
+            width: 220,
           }}
         >
-          <label
-            htmlFor="blend-toggle"
-            style={{ fontSize: 13, color: "#1f1f1f", fontWeight: 600 }}
-          >
-            Blending Preview
-          </label>
           <div
             style={{
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
-              gap: 8,
+              flex: "1 1 auto",
             }}
           >
+            <span style={{ fontSize: 12, color: "#3f3f3f", marginBottom: 8 }}>
+              Top
+            </span>
             <input
-              id="blend-toggle"
-              type="checkbox"
-              checked={blendEnabled}
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={yMax}
               onChange={(event) => {
-                setBlendEnabled(event.target.checked);
+                const raw = parseFloat(event.target.value);
+                if (Number.isFinite(raw)) {
+                  setYMax(Math.max(0, Math.min(1, raw)));
+                }
+              }}
+              style={{
+                writingMode: "bt-lr",
+                WebkitAppearance: "slider-vertical",
+                width: "auto",
+                height: "60vh",
+              }}
+              aria-label="Y-axis cross-section"
+            />
+            <span style={{ fontSize: 12, color: "#3f3f3f", marginTop: 8 }}>
+              Bottom
+            </span>
+          </div>
+
+          {pendingMissingColors.length > 0 && !mappingModalVisible && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                background: "#fff4d6",
+                borderRadius: 6,
+                padding: "8px 10px",
+                border: "1px solid #f2c97d",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#8a5400",
+                }}
+              >
+                {pendingMissingColors.length} unmapped material
+                {pendingMissingColors.length > 1 ? "s" : ""} detected
+              </span>
+              <button
+                type="button"
+                onClick={() => setMappingModalVisible(true)}
+                style={{
+                  alignSelf: "flex-start",
+                  padding: "4px 8px",
+                  borderRadius: 4,
+                  border: "none",
+                  background: "#f2a100",
+                  color: "#ffffff",
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                Map materials
+              </button>
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+            }}
+          >
+            <label
+              htmlFor="quality-slider"
+              style={{ fontSize: 13, color: "#1f1f1f", fontWeight: 600 }}
+            >
+              Quality
+            </label>
+            <input
+              id="quality-slider"
+              type="range"
+              min="50"
+              max="150"
+              step="5"
+              value={qualityPct}
+              onChange={(event) => {
+                const raw = parseFloat(event.target.value);
+                if (Number.isFinite(raw)) {
+                  setQualityPct(Math.max(50, Math.min(150, raw)));
+                }
               }}
             />
             <span style={{ fontSize: 12, color: "#3f3f3f" }}>
-              Blend neighbours (radius {BLEND_RADIUS_STEPS})
+              {qualityLabel} · {qualityPct}% · {fullSteps} steps
             </span>
           </div>
-        </div>
 
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            background: "#f5f5f5",
-            borderRadius: 6,
-            padding: "8px 10px",
-          }}
-        >
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#1f1f1f" }}>
-            Runtime Stats
-          </span>
-          <span style={{ fontSize: 12, color: "#3f3f3f" }}>
-            FPS: {fps ? `${fps}` : "—"}
-          </span>
-          <span style={{ fontSize: 12, color: "#3f3f3f" }}>
-            Memory: {statsSummary ? formatBytes(statsSummary.byteSize) : "—"}
-          </span>
-          {statsSummary && (
-            <>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+            }}
+          >
+            <label
+              htmlFor="blend-toggle"
+              style={{ fontSize: 13, color: "#1f1f1f", fontWeight: 600 }}
+            >
+              Blending Preview
+            </label>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <input
+                id="blend-toggle"
+                type="checkbox"
+                checked={blendEnabled}
+                onChange={(event) => {
+                  setBlendEnabled(event.target.checked);
+                }}
+              />
               <span style={{ fontSize: 12, color: "#3f3f3f" }}>
-                Voxels: {statsSummary.voxelDimensionsLabel}
+                Blend neighbours (radius {BLEND_RADIUS_STEPS})
               </span>
-              <span style={{ fontSize: 12, color: "#3f3f3f" }}>
-                Total voxels: {statsSummary.voxelCount.toLocaleString()}
-              </span>
-              <span style={{ fontSize: 12, color: "#3f3f3f" }}>
-                Palette entries: {statsSummary.paletteSize}
-              </span>
-            </>
-          )}
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              background: "#f5f5f5",
+              borderRadius: 6,
+              padding: "8px 10px",
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#1f1f1f" }}>
+              Runtime Stats
+            </span>
+            <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+              FPS: {fps ? `${fps}` : "—"}
+            </span>
+            <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+              Memory: {statsSummary ? formatBytes(statsSummary.byteSize) : "—"}
+            </span>
+            {statsSummary && (
+              <>
+                <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+                  Voxels: {statsSummary.voxelDimensionsLabel}
+                </span>
+                <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+                  Total voxels: {statsSummary.voxelCount.toLocaleString()}
+                </span>
+                <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+                  Palette entries: {statsSummary.paletteSize}
+                </span>
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
