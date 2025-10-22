@@ -1,6 +1,6 @@
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect } from "react";
 import * as THREE from "three";
-import { Canvas, useLoader } from "@react-three/fiber";
+import { Canvas } from "@react-three/fiber";
 import {
   OrbitControls,
   Environment,
@@ -8,9 +8,79 @@ import {
   GizmoViewport,
   Grid,
 } from "@react-three/drei";
-import { TextureLoader } from "three";
 
 const inchToMeter = 0.0254;
+const MATERIAL_COLOR_MAP = {
+  "0 255 255 255": [0, 255, 255, 140], // VeroCY-V
+  "255 0 255 255": [255, 0, 255, 200], // VeroMGT-V
+  "255 255 0 255": [255, 255, 0, 100], // VeroYL-C
+  "0 0 0 255": [0, 0, 0, 0], // VOID
+  "137 137 137 255": [137, 137, 137, 1], // Clear
+  "255 255 255 255": [255, 255, 255, 255], // White
+};
+
+const MAX_LOGGED_MISSING = 8;
+const missingColorSamples = new Set();
+
+const applyMaterialColorMap = (texture) => {
+  const image = texture.image;
+  if (!image) return texture;
+
+  const width = image.width;
+  const height = image.height;
+
+  if (!width || !height) return texture;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return texture;
+
+  ctx.drawImage(image, 0, 0, width, height);
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  const localMissing = new Set();
+
+  for (let i = 0; i < data.length; i += 4) {
+    const key = `${data[i]} ${data[i + 1]} ${data[i + 2]} ${data[i + 3]}`;
+    const mapped = MATERIAL_COLOR_MAP[key];
+    if (mapped) {
+      data[i] = mapped[0];
+      data[i + 1] = mapped[1];
+      data[i + 2] = mapped[2];
+      data[i + 3] = mapped[3];
+    } else if (
+      missingColorSamples.size < MAX_LOGGED_MISSING &&
+      localMissing.size < MAX_LOGGED_MISSING
+    ) {
+      localMissing.add(key);
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  texture.image = canvas;
+  if (texture.source) {
+    texture.source.data = canvas;
+  }
+  texture.needsUpdate = true;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.NearestFilter;
+  texture.magFilter = THREE.NearestFilter;
+  texture.generateMipmaps = false;
+  texture.anisotropy = 1;
+
+  if (localMissing.size) {
+    localMissing.forEach((key) => missingColorSamples.add(key));
+    console.warn(
+      "[Slices] Unmapped material colors (sampled):",
+      Array.from(localMissing)
+    );
+  }
+
+  return texture;
+};
 
 const SlicesGroup = ({ config }) => {
   const {
@@ -46,6 +116,7 @@ const SlicesGroup = ({ config }) => {
     let cancelled = false;
     const loader = new THREE.TextureLoader();
     let loaded = 0;
+    missingColorSamples.clear();
 
     console.log(`[Slices] Start loading ${urls.length} textures…`);
     setProgress(0);
@@ -55,6 +126,7 @@ const SlicesGroup = ({ config }) => {
         loader.load(
           u,
           (tex) => {
+            applyMaterialColorMap(tex);
             loaded += 1;
             const pct = Math.round((loaded / urls.length) * 100);
             setProgress(pct);
@@ -75,6 +147,12 @@ const SlicesGroup = ({ config }) => {
         if (!cancelled) {
           setTextures(texs);
           console.log("[Slices] All textures loaded (100%).");
+          if (missingColorSamples.size) {
+            console.warn(
+              "[Slices] Sample of unmapped colors:",
+              Array.from(missingColorSamples)
+            );
+          }
         }
       })
       .catch(() => {
@@ -86,6 +164,14 @@ const SlicesGroup = ({ config }) => {
     };
   }, [urls]);
 
+  useEffect(() => {
+    return () => {
+      if (textures) {
+        textures.forEach((tex) => tex.dispose());
+      }
+    };
+  }, [textures]);
+
   if (!textures) return null;
 
   // Stack planes along +Y; scene is rotated so XZ is ground
@@ -95,7 +181,12 @@ const SlicesGroup = ({ config }) => {
         // move along local Z; after the -90° X-rotation this is world +Y
         <mesh key={i} position={[0, 0, -i * dy]}>
           <planeGeometry args={[widthM, heightM]} />
-          <meshBasicMaterial map={tex} transparent side={THREE.DoubleSide} />
+          <meshBasicMaterial
+            map={tex}
+            transparent
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
         </mesh>
       ))}
     </group>
@@ -123,12 +214,6 @@ export const VoxelPreview = ({ config }) => {
       }}
     >
       <OrbitControls makeDefault target={[0, 0, 0]} />
-
-      {/* sanity probe — should ALWAYS be visible */}
-      <mesh position={[0, 0, 0]}>
-        <boxGeometry args={[0.02, 0.02, 0.02]} />
-        <meshStandardMaterial color="hotpink" />
-      </mesh>
 
       <Environment preset="city" />
       <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
