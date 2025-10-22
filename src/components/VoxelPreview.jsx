@@ -1,4 +1,10 @@
-import React, { useMemo, useEffect, useState, useRef } from "react";
+import React, {
+  useMemo,
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
 import * as THREE from "three";
 import { Canvas, useFrame } from "@react-three/fiber";
 import {
@@ -29,6 +35,41 @@ const MAX_LOGGED_MISSING = 8;
 const MAX_PALETTE_SIZE = 256;
 const missingColorSamples = new Set();
 const TARGET_AXIS_RESOLUTION = 256;
+
+const formatBytes = (bytes) => {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "—";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
+};
+
+const FrameRateTracker = ({ onUpdate }) => {
+  const fpsRef = useRef({ frames: 0, time: 0 });
+
+  useFrame((_, delta) => {
+    const target = fpsRef.current;
+    target.frames += 1;
+    target.time += delta;
+    if (target.time >= 0.5) {
+      const currentFps = Math.round(target.frames / target.time);
+      if (onUpdate) {
+        onUpdate(currentFps);
+      }
+      target.frames = 0;
+      target.time = 0;
+    }
+  });
+
+  return null;
+};
 
 const computeDownsampleStep = (size) =>
   Math.max(1, Math.ceil(size / TARGET_AXIS_RESOLUTION));
@@ -561,6 +602,70 @@ const CrossSectionOutline = ({ scale, yMax }) => {
   );
 };
 
+const CrossSectionFill = ({ scale, yMax }) => {
+  const [scaleX, scaleY, scaleZ] = scale;
+  const texture = useMemo(() => {
+    const size = 64;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, size, size);
+      ctx.strokeStyle = "#000000";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, size);
+      ctx.lineTo(size, 0);
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.minFilter = THREE.LinearMipMapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.anisotropy = 4;
+    return tex;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      texture.dispose();
+    };
+  }, [texture]);
+
+  useEffect(() => {
+    const patternSize = 0.01;
+    const repeatX = Math.max(scaleX / patternSize, 1);
+    const repeatY = Math.max(scaleY / patternSize, 1);
+    texture.repeat.set(repeatX, repeatY);
+    texture.needsUpdate = true;
+  }, [texture, scaleX, scaleY]);
+
+  const clamped = THREE.MathUtils.clamp(
+    Number.isFinite(yMax) ? yMax : 1,
+    0,
+    1
+  );
+  const halfZ = scaleZ / 2;
+  const z = clamped * scaleZ - halfZ;
+
+  return (
+    <mesh position={[0, 0, z]} renderOrder={52}>
+      <planeGeometry args={[scaleX, scaleY]} />
+      <meshBasicMaterial
+        map={texture}
+        transparent
+        depthTest={false}
+        depthWrite={false}
+        toneMapped={false}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+};
+
 const VolumeStage = ({
   slices,
   scale,
@@ -568,6 +673,7 @@ const VolumeStage = ({
   previewSteps,
   fullSteps,
   yMax,
+  onStatsChange,
 }) => {
   const [resources, setResources] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -585,6 +691,9 @@ const VolumeStage = ({
         resourcesRef.current = null;
       }
       setResources(null);
+      if (onStatsChange) {
+        onStatsChange(null);
+      }
     };
 
     disposeCurrent();
@@ -621,6 +730,20 @@ const VolumeStage = ({
         resourcesRef.current = built;
         setResources(built);
         setProgress(100);
+        if (onStatsChange) {
+          const { voxelDimensions, paletteSize } = built;
+          const voxelCount =
+            voxelDimensions.width *
+            voxelDimensions.height *
+            voxelDimensions.depth;
+          const byteSize = voxelCount + paletteSize * 4;
+          onStatsChange({
+            voxelDimensions,
+            paletteSize,
+            voxelCount,
+            byteSize,
+          });
+        }
       } catch (err) {
         console.error("[Volume] Failed to construct 3D texture", err);
         if (!cancelled) {
@@ -647,15 +770,19 @@ const VolumeStage = ({
         resourcesRef.current.paletteTexture.dispose();
         resourcesRef.current = null;
       }
+      if (onStatsChange) {
+        onStatsChange(null);
+      }
     };
-  }, []);
+  }, [onStatsChange]);
 
-  const showCrossSectionOutline = yMax < 0.999;
+  const showCrossSection = yMax < 0.999;
 
   return (
     <group rotation={[-Math.PI / 2, 0, 0]}>
       <BoundingBoxOutline scale={scale} />
-      {showCrossSectionOutline && (
+      {showCrossSection && <CrossSectionFill scale={scale} yMax={yMax} />}
+      {showCrossSection && (
         <CrossSectionOutline scale={scale} yMax={yMax} />
       )}
       {resources && (
@@ -744,12 +871,18 @@ export const VoxelPreview = ({ config }) => {
   const diag = Math.max(0.1, Math.hypot(widthM, heightM, safeDepthM));
   const camPos = [0, diag * 1.1, diag * 1.35];
 
-  const fullSteps = useMemo(() => {
+  const baseFullSteps = useMemo(() => {
     if (!sliceCount) return 128;
     const longestAxis = Math.max(sliceWidthPx, sliceHeightPx, sliceCount);
     const target = Math.round(longestAxis * 0.35);
     return Math.min(768, Math.max(96, target));
   }, [sliceCount, sliceWidthPx, sliceHeightPx]);
+
+  const [qualityPct, setQualityPct] = useState(100);
+  const fullSteps = useMemo(() => {
+    const scaled = Math.round(baseFullSteps * (qualityPct / 100));
+    return Math.min(1024, Math.max(48, scaled));
+  }, [baseFullSteps, qualityPct]);
 
   const previewSteps = useMemo(() => {
     const proposed = Math.round(fullSteps * 0.5);
@@ -763,6 +896,8 @@ export const VoxelPreview = ({ config }) => {
   const [isInteracting, setIsInteracting] = useState(false);
   const interactionTimeout = useRef(null);
   const [yMax, setYMax] = useState(1);
+  const [stats, setStats] = useState(null);
+  const [fps, setFps] = useState(null);
 
   useEffect(() => {
     return () => {
@@ -783,6 +918,32 @@ export const VoxelPreview = ({ config }) => {
       interactionTimeout.current = null;
     }, 220);
   };
+
+  const handleFpsUpdate = useCallback((value) => {
+    setFps((prev) => (prev === value ? prev : value));
+  }, []);
+
+  const statsSummary = useMemo(() => {
+    if (!stats) return null;
+    const {
+      voxelDimensions: { width, height, depth },
+      voxelCount,
+      byteSize,
+      paletteSize,
+    } = stats;
+    return {
+      voxelDimensionsLabel: `${width} × ${height} × ${depth}`,
+      voxelCount,
+      byteSize,
+      paletteSize,
+    };
+  }, [stats]);
+
+  const qualityLabel = useMemo(() => {
+    if (qualityPct <= 75) return "Draft";
+    if (qualityPct >= 125) return "High";
+    return "Balanced";
+  }, [qualityPct]);
 
   return (
     <div
@@ -836,6 +997,7 @@ export const VoxelPreview = ({ config }) => {
           <ambientLight intensity={1} />
           <directionalLight position={[2, 4, 3]} intensity={1} />
 
+          <FrameRateTracker onUpdate={handleFpsUpdate} />
           <VolumeStage
             slices={slices}
             scale={volumeScale}
@@ -843,6 +1005,7 @@ export const VoxelPreview = ({ config }) => {
             previewSteps={previewSteps}
             fullSteps={fullSteps}
             yMax={yMax}
+            onStatsChange={setStats}
           />
         </Canvas>
       </div>
@@ -850,37 +1013,115 @@ export const VoxelPreview = ({ config }) => {
         style={{
           display: "flex",
           flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          paddingRight: 8,
+          justifyContent: "flex-start",
+          alignItems: "stretch",
+          padding: "0 8px",
+          gap: 16,
+          width: 220,
         }}
       >
-        <span style={{ fontSize: 12, color: "#3f3f3f", marginBottom: 8 }}>
-          Top
-        </span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={yMax}
-          onChange={(event) => {
-            const raw = parseFloat(event.target.value);
-            if (Number.isFinite(raw)) {
-              setYMax(Math.max(0, Math.min(1, raw)));
-            }
-          }}
+        <div
           style={{
-            writingMode: "bt-lr",
-            WebkitAppearance: "slider-vertical",
-            width: "auto",
-            height: "80vh",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            flex: "1 1 auto",
           }}
-          aria-label="Y-axis cross-section"
-        />
-        <span style={{ fontSize: 12, color: "#3f3f3f", marginTop: 8 }}>
-          Bottom
-        </span>
+        >
+          <span style={{ fontSize: 12, color: "#3f3f3f", marginBottom: 8 }}>
+            Top
+          </span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={yMax}
+            onChange={(event) => {
+              const raw = parseFloat(event.target.value);
+              if (Number.isFinite(raw)) {
+                setYMax(Math.max(0, Math.min(1, raw)));
+              }
+            }}
+            style={{
+              writingMode: "bt-lr",
+              WebkitAppearance: "slider-vertical",
+              width: "auto",
+              height: "60vh",
+            }}
+            aria-label="Y-axis cross-section"
+          />
+          <span style={{ fontSize: 12, color: "#3f3f3f", marginTop: 8 }}>
+            Bottom
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+          }}
+        >
+          <label
+            htmlFor="quality-slider"
+            style={{ fontSize: 13, color: "#1f1f1f", fontWeight: 600 }}
+          >
+            Quality
+          </label>
+          <input
+            id="quality-slider"
+            type="range"
+            min="50"
+            max="150"
+            step="5"
+            value={qualityPct}
+            onChange={(event) => {
+              const raw = parseFloat(event.target.value);
+              if (Number.isFinite(raw)) {
+                setQualityPct(Math.max(50, Math.min(150, raw)));
+              }
+            }}
+          />
+          <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+            {qualityLabel} · {qualityPct}% · {fullSteps} steps
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            background: "#f5f5f5",
+            borderRadius: 6,
+            padding: "8px 10px",
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#1f1f1f" }}>
+            Runtime Stats
+          </span>
+          <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+            FPS: {fps ? `${fps}` : "—"}
+          </span>
+          <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+            Memory:{" "}
+            {statsSummary ? formatBytes(statsSummary.byteSize) : "—"}
+          </span>
+          {statsSummary && (
+            <>
+              <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+                Voxels: {statsSummary.voxelDimensionsLabel}
+              </span>
+              <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+                Total voxels: {statsSummary.voxelCount.toLocaleString()}
+              </span>
+              <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+                Palette entries: {statsSummary.paletteSize}
+              </span>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
