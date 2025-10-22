@@ -20,6 +20,11 @@ const MATERIAL_COLOR_MAP = {
   "255 255 255 255": [255, 255, 255, 255], // White
 };
 
+const CLEAR_MATERIAL_KEY = "137 137 137 255";
+const CLEAR_PALETTE_ENTRY_KEY =
+  MATERIAL_COLOR_MAP[CLEAR_MATERIAL_KEY]?.join(",");
+const CLEAR_ALPHA_SCALE = 0.08; // Additional attenuation so clear voxels accumulate less opacity
+
 const MAX_LOGGED_MISSING = 8;
 const MAX_PALETTE_SIZE = 256;
 const missingColorSamples = new Set();
@@ -135,7 +140,9 @@ const buildVolumeResources = async (slices, onProgress) => {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
-    throw new Error("Unable to acquire 2D canvas context for volume processing.");
+    throw new Error(
+      "Unable to acquire 2D canvas context for volume processing."
+    );
   }
 
   for (let targetZ = 0; targetZ < targetDepth; targetZ += 1) {
@@ -242,10 +249,16 @@ const buildVolumeResources = async (slices, onProgress) => {
     );
   }
 
+  const clearPaletteIndex =
+    CLEAR_PALETTE_ENTRY_KEY && paletteLookup.has(CLEAR_PALETTE_ENTRY_KEY)
+      ? paletteLookup.get(CLEAR_PALETTE_ENTRY_KEY)
+      : -1;
+
   return {
     volumeTexture,
     paletteTexture,
     paletteSize: palette.length,
+    clearPaletteIndex,
     voxelDimensions: {
       width: targetWidth,
       height: targetHeight,
@@ -275,6 +288,8 @@ const volumeFragmentShader = `
   uniform sampler2D u_palette;
   uniform float u_paletteSize;
   uniform float u_steps;
+  uniform float u_clearIndex;
+  uniform float u_clearAlphaScale;
   uniform mat4 u_modelMatrixInverse;
 
   in vec3 vPosition;
@@ -349,6 +364,9 @@ const volumeFragmentShader = `
 
         float alpha = sampleColor.a;
         if (alpha > 0.0) {
+          if (u_clearIndex >= 0.0 && abs(paletteIndex - u_clearIndex) < 0.5) {
+            alpha *= u_clearAlphaScale;
+          }
           float weight = alpha * (1.0 - accum.a);
           accum.rgb += sampleColor.rgb * weight;
           accum.a += weight;
@@ -385,6 +403,13 @@ const VolumeMesh = ({
         u_palette: { value: resources.paletteTexture },
         u_paletteSize: { value: resources.paletteSize },
         u_steps: { value: fullSteps },
+        u_clearIndex: {
+          value:
+            typeof resources.clearPaletteIndex === "number"
+              ? resources.clearPaletteIndex
+              : -1,
+        },
+        u_clearAlphaScale: { value: CLEAR_ALPHA_SCALE },
         u_modelMatrixInverse: { value: new THREE.Matrix4() },
       },
       vertexShader: volumeVertexShader,
@@ -416,7 +441,9 @@ const VolumeMesh = ({
 
   useEffect(() => {
     if (material) {
-      material.uniforms.u_steps.value = isInteracting ? previewSteps : fullSteps;
+      material.uniforms.u_steps.value = isInteracting
+        ? previewSteps
+        : fullSteps;
     }
   }, [material, isInteracting, previewSteps, fullSteps]);
 
@@ -603,10 +630,7 @@ export const VoxelPreview = ({ config }) => {
     [widthM, heightM, safeDepthM]
   );
 
-  const diag = Math.max(
-    0.1,
-    Math.hypot(widthM, heightM, safeDepthM)
-  );
+  const diag = Math.max(0.1, Math.hypot(widthM, heightM, safeDepthM));
   const camPos = [0, diag * 1.1, diag * 1.35];
 
   const fullSteps = useMemo(() => {
@@ -650,7 +674,12 @@ export const VoxelPreview = ({ config }) => {
 
   return (
     <Canvas
-      camera={{ position: camPos, fov: 50, near: 0.01, far: Math.max(diag * 6, 10_000) }}
+      camera={{
+        position: camPos,
+        fov: 50,
+        near: 0.01,
+        far: Math.max(diag * 6, 10_000),
+      }}
       style={{ width: "100%", height: "80vh", background: "#ffffff" }}
       onCreated={({ gl, scene, camera }) => {
         gl.setClearColor("#ffffff", 1);
