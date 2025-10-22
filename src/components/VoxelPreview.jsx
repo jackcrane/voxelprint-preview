@@ -22,8 +22,8 @@ const MATERIAL_COLOR_MAP = {
   "255 0 255 255": [255, 0, 255, 200], // VeroMGT-V
   "255 255 0 255": [255, 255, 0, 100], // VeroYL-C
   "0 0 0 255": [0, 0, 0, 0], // VOID
-  "137 137 137 255": [137, 137, 137, 1], // Clear
-  "255 255 255 255": [255, 255, 255, 255], // White
+  "137 137 137 255": [137, 137, 137, 1], // UltraClear
+  "255 255 255 255": [255, 255, 255, 255], // VeroUltraWhite
 };
 
 const CLEAR_MATERIAL_KEY = "137 137 137 255";
@@ -35,6 +35,7 @@ const MAX_LOGGED_MISSING = 8;
 const MAX_PALETTE_SIZE = 256;
 const missingColorSamples = new Set();
 const TARGET_AXIS_RESOLUTION = 256;
+const BLEND_RADIUS_STEPS = 2;
 
 const formatBytes = (bytes) => {
   if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -145,6 +146,108 @@ const ensurePaletteEntry = (lookup, palette, color) => {
   palette.push(entry);
   lookup.set(key, index);
   return index;
+};
+
+const createBlendedVolumeTexture = (
+  data,
+  dimensions,
+  palette,
+  clearPaletteIndex,
+  radius
+) => {
+  if (!radius || radius < 1) {
+    return null;
+  }
+
+  const { width, height, depth } = dimensions;
+  const voxelCount = width * height * depth;
+  if (!voxelCount) {
+    return null;
+  }
+
+  const adjustedPalette = palette.map((rgba, index) => {
+    const alphaScale = index === clearPaletteIndex ? CLEAR_ALPHA_SCALE : 1;
+    return [
+      rgba[0] / 255,
+      rgba[1] / 255,
+      rgba[2] / 255,
+      (rgba[3] / 255) * alphaScale,
+    ];
+  });
+
+  const blended = new Uint8Array(voxelCount * 4);
+
+  const indexFor = (x, y, z) => z * width * height + y * width + x;
+
+  for (let z = 0; z < depth; z += 1) {
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        let accumR = 0;
+        let accumG = 0;
+        let accumB = 0;
+        let accumA = 0;
+        let count = 0;
+
+        const addSample = (sx, sy, sz) => {
+          if (
+            sx < 0 ||
+            sy < 0 ||
+            sz < 0 ||
+            sx >= width ||
+            sy >= height ||
+            sz >= depth
+          ) {
+            return;
+          }
+          const paletteIndex = data[indexFor(sx, sy, sz)];
+          const sample = adjustedPalette[paletteIndex];
+          if (!sample || sample[3] <= 0) {
+            return;
+          }
+          accumR += sample[0];
+          accumG += sample[1];
+          accumB += sample[2];
+          accumA += sample[3];
+          count += 1;
+        };
+
+        addSample(x, y, z);
+        for (let step = 1; step <= radius; step += 1) {
+          addSample(x + step, y, z);
+          addSample(x - step, y, z);
+          addSample(x, y + step, z);
+          addSample(x, y - step, z);
+          addSample(x, y, z + step);
+          addSample(x, y, z - step);
+        }
+
+        const base = indexFor(x, y, z) * 4;
+        if (!count) {
+          blended[base] = 0;
+          blended[base + 1] = 0;
+          blended[base + 2] = 0;
+          blended[base + 3] = 0;
+          continue;
+        }
+
+        const inv = 1 / count;
+        blended[base] = clampByte(accumR * inv * 255);
+        blended[base + 1] = clampByte(accumG * inv * 255);
+        blended[base + 2] = clampByte(accumB * inv * 255);
+        blended[base + 3] = clampByte(accumA * inv * 255);
+      }
+    }
+  }
+
+  const texture = new THREE.Data3DTexture(blended, width, height, depth);
+  texture.format = THREE.RGBAFormat;
+  texture.type = THREE.UnsignedByteType;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.unpackAlignment = 1;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
 };
 
 const buildVolumeResources = async (slices, onProgress) => {
@@ -295,6 +398,21 @@ const buildVolumeResources = async (slices, onProgress) => {
       ? paletteLookup.get(CLEAR_PALETTE_ENTRY_KEY)
       : -1;
 
+  const blendedVolumeTexture =
+    BLEND_RADIUS_STEPS > 0
+      ? createBlendedVolumeTexture(
+          data,
+          {
+            width: targetWidth,
+            height: targetHeight,
+            depth: targetDepth,
+          },
+          palette,
+          clearPaletteIndex,
+          BLEND_RADIUS_STEPS
+        )
+      : null;
+
   return {
     volumeTexture,
     paletteTexture,
@@ -305,6 +423,7 @@ const buildVolumeResources = async (slices, onProgress) => {
       height: targetHeight,
       depth: targetDepth,
     },
+    blendedVolumeTexture,
   };
 };
 
@@ -333,6 +452,8 @@ const volumeFragmentShader = `
   uniform float u_clearAlphaScale;
   uniform mat4 u_modelMatrixInverse;
   uniform float u_yMax;
+  uniform float u_useBlend;
+  uniform sampler3D u_blendVolume;
 
   in vec3 vPosition;
 
@@ -399,16 +520,25 @@ const volumeFragmentShader = `
         texCoord.y >= 0.0 && texCoord.y <= 1.0 &&
         texCoord.z >= 0.0 && texCoord.z <= u_yMax
       ) {
-        float raw = texture(u_volume, texCoord).r;
-        float paletteIndex = clamp(floor(raw * 255.0 + 0.5), 0.0, paletteSize - 1.0);
-        float paletteU = (paletteIndex + 0.5) / paletteSize;
-        vec4 sampleColor = texture(u_palette, vec2(paletteU, 0.5));
+        vec4 sampleColor;
+        if (u_useBlend > 0.5) {
+          sampleColor = texture(u_blendVolume, texCoord);
+        } else {
+          float raw = texture(u_volume, texCoord).r;
+          float paletteIndex = clamp(
+            floor(raw * 255.0 + 0.5),
+            0.0,
+            paletteSize - 1.0
+          );
+          float paletteU = (paletteIndex + 0.5) / paletteSize;
+          sampleColor = texture(u_palette, vec2(paletteU, 0.5));
+          if (u_clearIndex >= 0.0 && abs(paletteIndex - u_clearIndex) < 0.5) {
+            sampleColor.a *= u_clearAlphaScale;
+          }
+        }
 
         float alpha = sampleColor.a;
         if (alpha > 0.0) {
-          if (u_clearIndex >= 0.0 && abs(paletteIndex - u_clearIndex) < 0.5) {
-            alpha *= u_clearAlphaScale;
-          }
           float weight = alpha * (1.0 - accum.a);
           accum.rgb += sampleColor.rgb * weight;
           accum.a += weight;
@@ -436,6 +566,7 @@ const VolumeMesh = ({
   previewSteps,
   fullSteps,
   yMax,
+  blendEnabled,
 }) => {
   const meshRef = useRef();
   const material = useMemo(() => {
@@ -455,6 +586,8 @@ const VolumeMesh = ({
         u_clearAlphaScale: { value: CLEAR_ALPHA_SCALE },
         u_modelMatrixInverse: { value: new THREE.Matrix4() },
         u_yMax: { value: 1 },
+        u_useBlend: { value: 0 },
+        u_blendVolume: { value: resources.blendedVolumeTexture || null },
       },
       vertexShader: volumeVertexShader,
       fragmentShader: volumeFragmentShader,
@@ -496,6 +629,22 @@ const VolumeMesh = ({
       material.uniforms.u_yMax.value = yMax;
     }
   }, [material, yMax]);
+
+  useEffect(() => {
+    if (!material) return;
+    material.uniforms.u_useBlend.value =
+      blendEnabled && resources?.blendedVolumeTexture ? 1 : 0;
+    material.uniforms.u_blendVolume.value =
+      resources?.blendedVolumeTexture || null;
+  }, [material, blendEnabled, resources]);
+
+  useEffect(() => {
+    return () => {
+      if (material && material.uniforms.u_blendVolume?.value) {
+        material.uniforms.u_blendVolume.value = null;
+      }
+    };
+  }, [material]);
 
   if (!resources || !material) {
     return null;
@@ -644,11 +793,7 @@ const CrossSectionFill = ({ scale, yMax }) => {
     texture.needsUpdate = true;
   }, [texture, scaleX, scaleY]);
 
-  const clamped = THREE.MathUtils.clamp(
-    Number.isFinite(yMax) ? yMax : 1,
-    0,
-    1
-  );
+  const clamped = THREE.MathUtils.clamp(Number.isFinite(yMax) ? yMax : 1, 0, 1);
   const halfZ = scaleZ / 2;
   const z = clamped * scaleZ - halfZ;
 
@@ -675,6 +820,7 @@ const VolumeStage = ({
   fullSteps,
   yMax,
   onStatsChange,
+  blendEnabled,
 }) => {
   const [resources, setResources] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -689,6 +835,9 @@ const VolumeStage = ({
       if (resourcesRef.current) {
         resourcesRef.current.volumeTexture.dispose();
         resourcesRef.current.paletteTexture.dispose();
+        if (resourcesRef.current.blendedVolumeTexture) {
+          resourcesRef.current.blendedVolumeTexture.dispose();
+        }
         resourcesRef.current = null;
       }
       setResources(null);
@@ -725,6 +874,9 @@ const VolumeStage = ({
         if (cancelled) {
           built.volumeTexture.dispose();
           built.paletteTexture.dispose();
+          if (built.blendedVolumeTexture) {
+            built.blendedVolumeTexture.dispose();
+          }
           return;
         }
 
@@ -737,7 +889,8 @@ const VolumeStage = ({
             voxelDimensions.width *
             voxelDimensions.height *
             voxelDimensions.depth;
-          const byteSize = voxelCount + paletteSize * 4;
+          const blendedBytes = built.blendedVolumeTexture ? voxelCount * 4 : 0;
+          const byteSize = voxelCount + paletteSize * 4 + blendedBytes;
           onStatsChange({
             voxelDimensions,
             paletteSize,
@@ -769,6 +922,9 @@ const VolumeStage = ({
       if (resourcesRef.current) {
         resourcesRef.current.volumeTexture.dispose();
         resourcesRef.current.paletteTexture.dispose();
+        if (resourcesRef.current.blendedVolumeTexture) {
+          resourcesRef.current.blendedVolumeTexture.dispose();
+        }
         resourcesRef.current = null;
       }
       if (onStatsChange) {
@@ -783,9 +939,7 @@ const VolumeStage = ({
     <group rotation={[-Math.PI / 2, 0, 0]}>
       <BoundingBoxOutline scale={scale} />
       {showCrossSection && <CrossSectionFill scale={scale} yMax={yMax} />}
-      {showCrossSection && (
-        <CrossSectionOutline scale={scale} yMax={yMax} />
-      )}
+      {showCrossSection && <CrossSectionOutline scale={scale} yMax={yMax} />}
       {resources && (
         <VolumeMesh
           resources={resources}
@@ -794,6 +948,7 @@ const VolumeStage = ({
           previewSteps={previewSteps}
           fullSteps={fullSteps}
           yMax={yMax}
+          blendEnabled={blendEnabled}
         />
       )}
       {!resources && loading && (
@@ -899,6 +1054,7 @@ export const VoxelPreview = ({ config }) => {
   const [yMax, setYMax] = useState(1);
   const [stats, setStats] = useState(null);
   const [fps, setFps] = useState(null);
+  const [blendEnabled, setBlendEnabled] = useState(true);
 
   useEffect(() => {
     return () => {
@@ -1007,6 +1163,7 @@ export const VoxelPreview = ({ config }) => {
             fullSteps={fullSteps}
             yMax={yMax}
             onStatsChange={setStats}
+            blendEnabled={blendEnabled}
           />
         </Canvas>
       </div>
@@ -1094,6 +1251,40 @@ export const VoxelPreview = ({ config }) => {
             display: "flex",
             flexDirection: "column",
             gap: 4,
+          }}
+        >
+          <label
+            htmlFor="blend-toggle"
+            style={{ fontSize: 13, color: "#1f1f1f", fontWeight: 600 }}
+          >
+            Blending Preview
+          </label>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <input
+              id="blend-toggle"
+              type="checkbox"
+              checked={blendEnabled}
+              onChange={(event) => {
+                setBlendEnabled(event.target.checked);
+              }}
+            />
+            <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+              Blend neighbours (radius {BLEND_RADIUS_STEPS})
+            </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
             background: "#f5f5f5",
             borderRadius: 6,
             padding: "8px 10px",
@@ -1106,8 +1297,7 @@ export const VoxelPreview = ({ config }) => {
             FPS: {fps ? `${fps}` : "—"}
           </span>
           <span style={{ fontSize: 12, color: "#3f3f3f" }}>
-            Memory:{" "}
-            {statsSummary ? formatBytes(statsSummary.byteSize) : "—"}
+            Memory: {statsSummary ? formatBytes(statsSummary.byteSize) : "—"}
           </span>
           {statsSummary && (
             <>
