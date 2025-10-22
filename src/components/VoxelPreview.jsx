@@ -605,13 +605,14 @@ const CrossSectionOutline = ({ scale, yMax }) => {
 const CrossSectionFill = ({ scale, yMax }) => {
   const [scaleX, scaleY, scaleZ] = scale;
   const texture = useMemo(() => {
-    const size = 64;
+    const size = 128;
     const canvas = document.createElement("canvas");
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext("2d");
     if (ctx) {
       ctx.clearRect(0, 0, size, size);
+      ctx.imageSmoothingEnabled = false;
       ctx.strokeStyle = "#000000";
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -623,9 +624,9 @@ const CrossSectionFill = ({ scale, yMax }) => {
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.minFilter = THREE.LinearMipMapLinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.anisotropy = 4;
+    tex.minFilter = THREE.NearestFilter;
+    tex.magFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
     return tex;
   }, []);
 
@@ -636,7 +637,7 @@ const CrossSectionFill = ({ scale, yMax }) => {
   }, [texture]);
 
   useEffect(() => {
-    const patternSize = 0.01;
+    const patternSize = 0.0025;
     const repeatX = Math.max(scaleX / patternSize, 1);
     const repeatY = Math.max(scaleY / patternSize, 1);
     texture.repeat.set(repeatX, repeatY);
@@ -657,7 +658,7 @@ const CrossSectionFill = ({ scale, yMax }) => {
       <meshBasicMaterial
         map={texture}
         transparent
-        depthTest={false}
+        depthTest
         depthWrite={false}
         toneMapped={false}
         side={THREE.DoubleSide}
