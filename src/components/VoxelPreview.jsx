@@ -23,7 +23,11 @@ const MATERIAL_DEFINITIONS = [
   { key: "255 255 0 255", rgba: [255, 255, 0, 100], name: "VeroYL-C" },
   { key: "0 0 0 255", rgba: [0, 0, 0, 0], name: "VOID" },
   { key: "137 137 137 255", rgba: [137, 137, 137, 1], name: "UltraClear" },
-  { key: "255 255 255 255", rgba: [255, 255, 255, 255], name: "VeroUltraWhite" },
+  {
+    key: "255 255 255 255",
+    rgba: [255, 255, 255, 255],
+    name: "VeroUltraWhite",
+  },
 ];
 const MATERIAL_COLOR_MAP = MATERIAL_DEFINITIONS.reduce((acc, { key, rgba }) => {
   acc[key] = rgba;
@@ -43,7 +47,9 @@ const MAX_LOGGED_MISSING = 8;
 const MAX_PALETTE_SIZE = 256;
 const missingColorSamples = new Set();
 const TARGET_AXIS_RESOLUTION = 256;
-const BLEND_RADIUS_STEPS = 2;
+const BLEND_RADIUS_STEPS = 1;
+const BLEND_CENTER_WEIGHT = 16;
+const BLEND_FALLOFF = 10;
 
 const formatBytes = (bytes) => {
   if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -193,10 +199,14 @@ const createBlendedVolumeTexture = (
         let accumR = 0;
         let accumG = 0;
         let accumB = 0;
-        let accumA = 0;
-        let count = 0;
+        let accumAlpha = 0;
+        let totalColorWeight = 0;
+        let totalAlphaWeight = 0;
 
-        const addSample = (sx, sy, sz) => {
+        const addSample = (sx, sy, sz, weight) => {
+          if (!weight || weight <= 0) {
+            return;
+          }
           if (
             sx < 0 ||
             sy < 0 ||
@@ -209,28 +219,39 @@ const createBlendedVolumeTexture = (
           }
           const paletteIndex = data[indexFor(sx, sy, sz)];
           const sample = adjustedPalette[paletteIndex];
-          if (!sample || sample[3] <= 0) {
+          if (!sample) {
             return;
           }
-          accumR += sample[0];
-          accumG += sample[1];
-          accumB += sample[2];
-          accumA += sample[3];
-          count += 1;
+          const alpha = sample[3];
+          if (alpha <= 0) {
+            return;
+          }
+          const alphaWeight = weight * alpha;
+          if (alphaWeight <= 0) {
+            return;
+          }
+          const colorWeight = alphaWeight * alpha;
+          accumR += sample[0] * colorWeight;
+          accumG += sample[1] * colorWeight;
+          accumB += sample[2] * colorWeight;
+          totalColorWeight += colorWeight;
+          accumAlpha += alpha * alphaWeight;
+          totalAlphaWeight += alphaWeight;
         };
 
-        addSample(x, y, z);
+        addSample(x, y, z, BLEND_CENTER_WEIGHT);
         for (let step = 1; step <= radius; step += 1) {
-          addSample(x + step, y, z);
-          addSample(x - step, y, z);
-          addSample(x, y + step, z);
-          addSample(x, y - step, z);
-          addSample(x, y, z + step);
-          addSample(x, y, z - step);
+          const weight = BLEND_CENTER_WEIGHT * Math.pow(BLEND_FALLOFF, step);
+          addSample(x + step, y, z, weight);
+          addSample(x - step, y, z, weight);
+          addSample(x, y + step, z, weight);
+          addSample(x, y - step, z, weight);
+          addSample(x, y, z + step, weight);
+          addSample(x, y, z - step, weight);
         }
 
         const base = indexFor(x, y, z) * 4;
-        if (!count) {
+        if (!totalColorWeight || !totalAlphaWeight) {
           blended[base] = 0;
           blended[base + 1] = 0;
           blended[base + 2] = 0;
@@ -238,11 +259,13 @@ const createBlendedVolumeTexture = (
           continue;
         }
 
-        const inv = 1 / count;
-        blended[base] = clampByte(accumR * inv * 255);
-        blended[base + 1] = clampByte(accumG * inv * 255);
-        blended[base + 2] = clampByte(accumB * inv * 255);
-        blended[base + 3] = clampByte(accumA * inv * 255);
+        const invColor = 1 / totalColorWeight;
+        blended[base] = clampByte(accumR * invColor * 255);
+        blended[base + 1] = clampByte(accumG * invColor * 255);
+        blended[base + 2] = clampByte(accumB * invColor * 255);
+        const invAlpha = 1 / totalAlphaWeight;
+        const alphaValue = accumAlpha * invAlpha;
+        blended[base + 3] = clampByte(alphaValue * 255);
       }
     }
   }
@@ -881,9 +904,9 @@ const MaterialMappingModal = ({
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {missingColors.map((key) => {
             const [r, g, b, a] = parseColorKey(key);
-            const rgbaPreview = `rgba(${r}, ${g}, ${b}, ${Math.round(
-              (a / 255) * 100
-            ) / 100})`;
+            const rgbaPreview = `rgba(${r}, ${g}, ${b}, ${
+              Math.round((a / 255) * 100) / 100
+            })`;
             return (
               <div
                 key={key}
@@ -957,9 +980,7 @@ const MaterialMappingModal = ({
             );
           })}
         </div>
-        <div
-          style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}
-        >
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <button
             type="button"
             onClick={onCancel}
