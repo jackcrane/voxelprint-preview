@@ -467,6 +467,100 @@ const VolumeMesh = ({
   );
 };
 
+const BoundingBoxOutline = ({ scale }) => {
+  const geometry = useMemo(() => {
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    const edges = new THREE.EdgesGeometry(box);
+    box.dispose();
+    return edges;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+    };
+  }, [geometry]);
+
+  return (
+    <lineSegments geometry={geometry} scale={scale} renderOrder={50}>
+      <lineBasicMaterial
+        color="#000000"
+        depthTest={false}
+        depthWrite={false}
+        toneMapped={false}
+        linewidth={1}
+      />
+    </lineSegments>
+  );
+};
+
+const CrossSectionOutline = ({ scale, yMax }) => {
+  const geometry = useMemo(() => {
+    const [scaleX, scaleY, scaleZ] = scale;
+    const clamped = THREE.MathUtils.clamp(
+      Number.isFinite(yMax) ? yMax : 1,
+      0,
+      1
+    );
+    const halfX = scaleX / 2;
+    const halfY = scaleY / 2;
+    const halfZ = scaleZ / 2;
+    const z = clamped * scaleZ - halfZ;
+
+    const points = new Float32Array([
+      -halfX,
+      -halfY,
+      z,
+      halfX,
+      -halfY,
+      z,
+
+      halfX,
+      -halfY,
+      z,
+      halfX,
+      halfY,
+      z,
+
+      halfX,
+      halfY,
+      z,
+      -halfX,
+      halfY,
+      z,
+
+      -halfX,
+      halfY,
+      z,
+      -halfX,
+      -halfY,
+      z,
+    ]);
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+    return geom;
+  }, [scale, yMax]);
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+    };
+  }, [geometry]);
+
+  return (
+    <lineSegments geometry={geometry} renderOrder={55}>
+      <lineBasicMaterial
+        color="#000000"
+        depthTest={false}
+        depthWrite={false}
+        toneMapped={false}
+        linewidth={1}
+      />
+    </lineSegments>
+  );
+};
+
 const VolumeStage = ({
   slices,
   scale,
@@ -556,8 +650,14 @@ const VolumeStage = ({
     };
   }, []);
 
+  const showCrossSectionOutline = yMax < 0.999;
+
   return (
     <group rotation={[-Math.PI / 2, 0, 0]}>
+      <BoundingBoxOutline scale={scale} />
+      {showCrossSectionOutline && (
+        <CrossSectionOutline scale={scale} yMax={yMax} />
+      )}
       {resources && (
         <VolumeMesh
           resources={resources}
@@ -723,7 +823,7 @@ export const VoxelPreview = ({ config }) => {
             />
           </GizmoHelper>
 
-          <Grid
+          {/* <Grid
             cellSize={0.01}
             sectionSize={Math.max(widthM, heightM) * 2}
             cellColor="#6f6f6f"
@@ -731,7 +831,7 @@ export const VoxelPreview = ({ config }) => {
             fadeDistance={1000}
             position={[0, 0, 0]}
             infiniteGrid
-          />
+          /> */}
 
           <ambientLight intensity={1} />
           <directionalLight position={[2, 4, 3]} intensity={1} />
