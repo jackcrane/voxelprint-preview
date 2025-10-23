@@ -1,5 +1,6 @@
 import * as THREE from "three";
 
+import { BLEND_ALPHA_SCALE } from "../constants/volume.js";
 import { clampByte } from "./palette.js";
 import { paletteToLinear } from "./blendPalette.js";
 import { buildOffsets } from "./blendOffsets.js";
@@ -51,8 +52,9 @@ export const createBlendedVolumeTexture = (
         blended[base + 2] = clampByte((accum.b / accum.colorWeight) * 255);
 
         const rawAlpha = (accum.alpha / accum.alphaWeight) * 255;
+        const scaledAlpha = rawAlpha * BLEND_ALPHA_SCALE;
         blended[base + 3] =
-          rawAlpha <= 0 ? 0 : Math.max(1, clampByte(rawAlpha));
+          scaledAlpha <= 0 ? 0 : Math.max(1, clampByte(scaledAlpha));
       }
     }
   }

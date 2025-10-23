@@ -2,7 +2,10 @@ import {
   CLEAR_MATERIAL_KEY,
   MATERIAL_COLOR_MAP,
 } from "../constants/materials.js";
-import { materialPaletteFromMap } from "./palette.js";
+import {
+  materialPaletteFromMap,
+  serializePaletteColor,
+} from "./palette.js";
 import { buildDepthIndices, computeDownsampleStep } from "./downsample.js";
 import { populateSlice } from "./populateSlice.js";
 
@@ -61,7 +64,7 @@ export const buildVolumeData = async (
   }
 
   const clearColor = materialColorMap[CLEAR_MATERIAL_KEY];
-  const clearKey = clearColor ? clearColor.join(",") : null;
+  const clearKey = clearColor ? serializePaletteColor(clearColor) : null;
   const clearPaletteIndex =
     clearKey && lookup.has(clearKey) ? lookup.get(clearKey) : -1;
 

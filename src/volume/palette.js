@@ -2,6 +2,22 @@ import { MAX_LOGGED_MISSING, MAX_PALETTE_SIZE } from "../constants/materials";
 
 export const clampByte = (value) => Math.max(0, Math.min(255, Math.round(value)));
 
+const normalizeChannelForPalette = (value) => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  if (value <= 1 && value >= 0) {
+    return clampByte(value * 255);
+  }
+  return clampByte(value);
+};
+
+export const normalizePaletteColor = (color) =>
+  color.map((channel) => normalizeChannelForPalette(channel));
+
+export const serializePaletteColor = (color) =>
+  normalizePaletteColor(color).join(",");
+
 export const mapMaterialColor = (
   r,
   g,
@@ -14,7 +30,7 @@ export const mapMaterialColor = (
   const key = `${r} ${g} ${b} ${a}`;
   const mapped = materialColorMap[key];
   if (mapped) {
-    return mapped;
+    return [...mapped];
   }
 
   if (
@@ -28,7 +44,8 @@ export const mapMaterialColor = (
 };
 
 export const ensurePaletteEntry = (lookup, palette, color) => {
-  const key = color.join(",");
+  const normalized = normalizePaletteColor(color);
+  const key = normalized.join(",");
   if (lookup.has(key)) {
     return lookup.get(key);
   }
@@ -39,15 +56,8 @@ export const ensurePaletteEntry = (lookup, palette, color) => {
     );
   }
 
-  const entry = [
-    clampByte(color[0]),
-    clampByte(color[1]),
-    clampByte(color[2]),
-    clampByte(color[3]),
-  ];
-
   const index = palette.length;
-  palette.push(entry);
+  palette.push(normalized);
   lookup.set(key, index);
   return index;
 };

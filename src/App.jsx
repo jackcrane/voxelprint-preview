@@ -51,7 +51,7 @@ export const App = () => {
   return (
     <div style={{ padding: 16, background: "#ffffff", minHeight: "100vh" }}>
       <h1 style={{ marginTop: 0 }}>GCVF Viewer</h1>
-      <input type="file" accept=".gcvf,.zip" onChange={handleUpload} />
+      <input type="file" accept=".gcvf" onChange={handleUpload} />
       {modelData && <VoxelPreview config={modelData} />}
     </div>
   );
