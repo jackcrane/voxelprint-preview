@@ -1,6 +1,14 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import { BLEND_RADIUS_STEPS } from "../constants/volume.js";
+import {
+  BLEND_RADIUS_STEPS,
+  GCVF_ALPHA_IMPACT_DEFAULT,
+  GCVF_ALPHA_IMPACT_MAX,
+  GCVF_ALPHA_IMPACT_MIN,
+  LAYER_ALPHA_IMPACT_DEFAULT,
+  LAYER_ALPHA_IMPACT_MAX,
+  LAYER_ALPHA_IMPACT_MIN,
+} from "../constants/volume.js";
 import { MATERIAL_DEFINITIONS } from "../constants/materials.js";
 import { computeVolumeMetrics } from "../utils/volumeMetrics.js";
 import { useInteractionFlag } from "../hooks/useInteractionFlag.js";
@@ -19,11 +27,51 @@ export const VoxelPreview = ({ config }) => {
   const mappings = useMaterialMappings(materialMappingEnabled);
   const quality = useQualitySettings(baseFullSteps);
   const noop = useCallback(() => {}, []);
+  const alphaImpactConfig = useMemo(
+    () =>
+      materialMappingEnabled
+        ? {
+            min: GCVF_ALPHA_IMPACT_MIN,
+            max: GCVF_ALPHA_IMPACT_MAX,
+            defaultValue: GCVF_ALPHA_IMPACT_DEFAULT,
+          }
+        : {
+            min: LAYER_ALPHA_IMPACT_MIN,
+            max: LAYER_ALPHA_IMPACT_MAX,
+            defaultValue: LAYER_ALPHA_IMPACT_DEFAULT,
+          },
+    [materialMappingEnabled]
+  );
 
   const [yMax, setYMax] = useState(1);
   const [stats, setStats] = useState(null);
   const [fps, setFps] = useState(null);
-  const [blendEnabled, setBlendEnabled] = useState(true);
+  const [blendEnabled, setBlendEnabled] = useState(() => materialMappingEnabled);
+  const [alphaImpact, setAlphaImpact] = useState(
+    alphaImpactConfig.defaultValue
+  );
+
+  const handleAlphaImpactChange = useCallback(
+    (value) => {
+      if (!Number.isFinite(value)) {
+        return;
+      }
+      const clamped = Math.max(
+        alphaImpactConfig.min,
+        Math.min(alphaImpactConfig.max, value)
+      );
+      setAlphaImpact(clamped);
+    },
+    [alphaImpactConfig]
+  );
+
+  useEffect(() => {
+    setAlphaImpact(alphaImpactConfig.defaultValue);
+  }, [alphaImpactConfig, config?.slices]);
+
+  useEffect(() => {
+    setBlendEnabled(materialMappingEnabled);
+  }, [materialMappingEnabled, config?.slices]);
 
   return (
     <>
@@ -60,6 +108,9 @@ export const VoxelPreview = ({ config }) => {
             onInteraction={markInteracting}
             onFpsUpdate={setFps}
             blendEnabled={blendEnabled}
+            alphaImpact={alphaImpact}
+            alphaImpactMin={alphaImpactConfig.min}
+            alphaImpactMax={alphaImpactConfig.max}
             materialColorMap={
               materialMappingEnabled ? mappings.materialColorMap : null
             }
@@ -92,6 +143,10 @@ export const VoxelPreview = ({ config }) => {
           blendEnabled={blendEnabled}
           onBlendToggle={setBlendEnabled}
           blendRadius={BLEND_RADIUS_STEPS}
+          alphaImpact={alphaImpact}
+          alphaImpactMin={alphaImpactConfig.min}
+          alphaImpactMax={alphaImpactConfig.max}
+          onAlphaImpactChange={handleAlphaImpactChange}
           stats={stats}
           fps={fps}
         />

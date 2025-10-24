@@ -13,6 +13,9 @@ export const VolumeMesh = ({
   fullSteps,
   yMax,
   blendEnabled,
+  alphaImpact,
+  alphaImpactMin,
+  alphaImpactMax,
 }) => {
   const meshRef = useRef();
 
@@ -35,6 +38,7 @@ export const VolumeMesh = ({
         u_yMax: { value: 1 },
         u_useBlend: { value: 0 },
         u_blendVolume: { value: resources.blendedVolumeTexture || null },
+        u_alphaImpact: { value: 1 },
       },
       vertexShader: volumeVertexShader,
       fragmentShader: volumeFragmentShader,
@@ -83,6 +87,16 @@ export const VolumeMesh = ({
     material.uniforms.u_blendVolume.value =
       resources?.blendedVolumeTexture || null;
   }, [material, blendEnabled, resources]);
+
+  useEffect(() => {
+    if (material && Number.isFinite(alphaImpact)) {
+      const clamped = Math.max(
+        alphaImpactMin ?? 0.01,
+        Math.min(alphaImpactMax ?? alphaImpact, alphaImpact)
+      );
+      material.uniforms.u_alphaImpact.value = clamped;
+    }
+  }, [material, alphaImpact, alphaImpactMin, alphaImpactMax]);
 
   useEffect(() => {
     return () => {

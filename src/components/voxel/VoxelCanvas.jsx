@@ -23,6 +23,9 @@ export const VoxelCanvas = ({
   onInteraction,
   onFpsUpdate,
   blendEnabled,
+  alphaImpact,
+  alphaImpactMin,
+  alphaImpactMax,
   materialColorMap,
   onStatsChange,
   onMissingMaterials,
@@ -69,6 +72,9 @@ export const VoxelCanvas = ({
       fullSteps={fullSteps}
       yMax={yMax}
       blendEnabled={blendEnabled}
+      alphaImpact={alphaImpact}
+      alphaImpactMin={alphaImpactMin}
+      alphaImpactMax={alphaImpactMax}
       materialColorMap={materialColorMap}
       onStatsChange={onStatsChange}
       onMissingMaterials={onMissingMaterials}

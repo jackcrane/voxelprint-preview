@@ -25,6 +25,7 @@ export const volumeFragmentShader = `
   uniform float u_yMax;
   uniform float u_useBlend;
   uniform sampler3D u_blendVolume;
+  uniform float u_alphaImpact;
 
   in vec3 vPosition;
 
@@ -108,7 +109,10 @@ export const volumeFragmentShader = `
           }
         }
 
-        float alpha = sampleColor.a;
+        float alphaBase = clamp(sampleColor.a, 0.0, 1.0);
+        float alpha = alphaBase > 0.0
+          ? pow(alphaBase, max(u_alphaImpact, 0.01))
+          : 0.0;
         if (alpha > 0.0) {
           float weight = alpha * (1.0 - accum.a);
           accum.rgb += sampleColor.rgb * weight;

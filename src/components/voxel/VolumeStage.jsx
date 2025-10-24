@@ -19,6 +19,9 @@ export const VolumeStage = ({
   materialColorMap,
   onStatsChange,
   onMissingMaterials,
+  alphaImpact,
+  alphaImpactMin,
+  alphaImpactMax,
 }) => {
   const { resources, loading, progress, error, stats, missingColors } =
     useVolumeResources(slices, materialColorMap, BLEND_RADIUS_STEPS);
@@ -51,6 +54,9 @@ export const VolumeStage = ({
           fullSteps={fullSteps}
           yMax={yMax}
           blendEnabled={blendEnabled}
+          alphaImpact={alphaImpact}
+          alphaImpactMin={alphaImpactMin}
+          alphaImpactMax={alphaImpactMax}
         />
       )}
       {!resources && loading && (

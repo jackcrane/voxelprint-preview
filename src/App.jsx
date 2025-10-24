@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { VoxelPreview } from "./components/VoxelPreview.jsx";
+import { SLICE_MODE_LAYER_HEIGHT_NM } from "./constants/volume.js";
 import { parseGCVF } from "./utils/parseGCVF.js";
 import { extractZip } from "./utils/extractZip.js";
 
 const DEFAULT_SLICE_SETTINGS = {
   XDpi: 600,
   YDpi: 600,
-  SliceThicknessNanoMeter: 100_000,
+  SliceThicknessNanoMeter: SLICE_MODE_LAYER_HEIGHT_NM,
 };
 
 const readImageDimensions = async (file) => {

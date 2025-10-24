@@ -30,10 +30,21 @@ export const PreviewSidebar = ({
   blendEnabled,
   onBlendToggle,
   blendRadius,
+  alphaImpact,
+  alphaImpactMin,
+  alphaImpactMax,
+  onAlphaImpactChange,
   stats,
   fps,
 }) => {
   const statsSummary = summarizeStats(stats);
+  const minAlpha = Number.isFinite(alphaImpactMin) ? alphaImpactMin : 0.01;
+  const maxAlpha = Number.isFinite(alphaImpactMax)
+    ? Math.max(minAlpha, alphaImpactMax)
+    : Math.max(minAlpha, minAlpha);
+  const alphaImpactDisplay = Number.isFinite(alphaImpact)
+    ? Math.max(minAlpha, Math.min(maxAlpha, alphaImpact))
+    : minAlpha;
 
   return (
     <div
@@ -176,6 +187,38 @@ export const PreviewSidebar = ({
             Blend neighbours (radius {blendRadius})
           </span>
         </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+        }}
+      >
+        <label
+          htmlFor="alpha-impact-slider"
+          style={{ fontSize: 13, color: "#1f1f1f", fontWeight: 600 }}
+        >
+          Transparency Curve
+        </label>
+        <input
+          id="alpha-impact-slider"
+          type="range"
+          min={minAlpha}
+          max={maxAlpha}
+          step="0.01"
+          value={alphaImpactDisplay}
+          onChange={(event) => {
+            const next = parseFloat(event.target.value);
+            if (!Number.isFinite(next)) return;
+            const clamped = Math.max(minAlpha, Math.min(maxAlpha, next));
+            onAlphaImpactChange(clamped);
+          }}
+        />
+        <span style={{ fontSize: 12, color: "#3f3f3f" }}>
+          {alphaImpactDisplay.toFixed(2)} power curve
+        </span>
       </div>
 
       <div
