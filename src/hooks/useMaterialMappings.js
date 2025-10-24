@@ -1,17 +1,47 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   MATERIAL_COLOR_MAP,
   MATERIAL_LOOKUP,
 } from "../constants/materials.js";
 
-export const useMaterialMappings = () => {
+const NO_OP = () => {};
+
+export const useMaterialMappings = (enabled = true) => {
   const [materialColorMap, setMaterialColorMap] = useState(() => ({
     ...MATERIAL_COLOR_MAP,
   }));
   const [pendingMissingColors, setPendingMissingColors] = useState([]);
   const [materialSelectionDraft, setMaterialSelectionDraft] = useState({});
   const [mappingModalVisible, setMappingModalVisible] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) {
+      setPendingMissingColors([]);
+      setMaterialSelectionDraft({});
+      setMappingModalVisible(false);
+    }
+  }, [enabled]);
+
+  const disabledState = useMemo(
+    () => ({
+      materialColorMap,
+      pendingMissingColors: [],
+      materialSelectionDraft: {},
+      mappingModalVisible: false,
+      canApplyMaterialMappings: false,
+      handleMissingMaterials: NO_OP,
+      handleMaterialSelectionChange: NO_OP,
+      applyMaterialMappings: NO_OP,
+      closeMappingModal: NO_OP,
+      openMappingModal: NO_OP,
+    }),
+    [materialColorMap]
+  );
+
+  if (!enabled) {
+    return disabledState;
+  }
 
   const handleMissingMaterials = useCallback((missingKeys) => {
     if (missingKeys && missingKeys.length) {

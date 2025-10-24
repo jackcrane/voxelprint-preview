@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 
 import { BLEND_RADIUS_STEPS } from "../constants/volume.js";
 import { MATERIAL_DEFINITIONS } from "../constants/materials.js";
@@ -12,11 +12,13 @@ import { VoxelCanvas } from "./voxel/VoxelCanvas.jsx";
 
 export const VoxelPreview = ({ config }) => {
   const { slices } = config;
+  const materialMappingEnabled = config?.colorMode !== "direct";
   const { cameraPosition, diag, volumeScale, baseFullSteps } =
     computeVolumeMetrics(config);
   const { isInteracting, markInteracting } = useInteractionFlag();
-  const mappings = useMaterialMappings();
+  const mappings = useMaterialMappings(materialMappingEnabled);
   const quality = useQualitySettings(baseFullSteps);
+  const noop = useCallback(() => {}, []);
 
   const [yMax, setYMax] = useState(1);
   const [stats, setStats] = useState(null);
@@ -25,17 +27,19 @@ export const VoxelPreview = ({ config }) => {
 
   return (
     <>
-      {mappings.mappingModalVisible && mappings.pendingMissingColors.length > 0 && (
-        <MaterialMappingModal
-          missingColors={mappings.pendingMissingColors}
-          selections={mappings.materialSelectionDraft}
-          onSelect={mappings.handleMaterialSelectionChange}
-          onConfirm={mappings.applyMaterialMappings}
-          onCancel={mappings.closeMappingModal}
-          materials={MATERIAL_DEFINITIONS}
-          canConfirm={mappings.canApplyMaterialMappings}
-        />
-      )}
+      {materialMappingEnabled &&
+        mappings.mappingModalVisible &&
+        mappings.pendingMissingColors.length > 0 && (
+          <MaterialMappingModal
+            missingColors={mappings.pendingMissingColors}
+            selections={mappings.materialSelectionDraft}
+            onSelect={mappings.handleMaterialSelectionChange}
+            onConfirm={mappings.applyMaterialMappings}
+            onCancel={mappings.closeMappingModal}
+            materials={MATERIAL_DEFINITIONS}
+            canConfirm={mappings.canApplyMaterialMappings}
+          />
+        )}
       <div
         style={{
           display: "flex",
@@ -56,9 +60,15 @@ export const VoxelPreview = ({ config }) => {
             onInteraction={markInteracting}
             onFpsUpdate={setFps}
             blendEnabled={blendEnabled}
-            materialColorMap={mappings.materialColorMap}
+            materialColorMap={
+              materialMappingEnabled ? mappings.materialColorMap : null
+            }
             onStatsChange={setStats}
-            onMissingMaterials={mappings.handleMissingMaterials}
+            onMissingMaterials={
+              materialMappingEnabled
+                ? mappings.handleMissingMaterials
+                : undefined
+            }
           />
         </div>
         <PreviewSidebar
@@ -68,9 +78,13 @@ export const VoxelPreview = ({ config }) => {
               setYMax(Math.max(0, Math.min(1, value)));
             }
           }}
-          pendingMissingColors={mappings.pendingMissingColors}
-          mappingModalVisible={mappings.mappingModalVisible}
-          onOpenMappingModal={mappings.openMappingModal}
+          pendingMissingColors={
+            materialMappingEnabled ? mappings.pendingMissingColors : []
+          }
+          mappingModalVisible={materialMappingEnabled && mappings.mappingModalVisible}
+          onOpenMappingModal={
+            materialMappingEnabled ? mappings.openMappingModal : noop
+          }
           qualityPct={quality.qualityPct}
           onQualityChange={quality.updateQuality}
           qualityLabel={quality.qualityLabel}

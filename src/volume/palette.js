@@ -51,9 +51,25 @@ export const ensurePaletteEntry = (lookup, palette, color) => {
   }
 
   if (palette.length >= MAX_PALETTE_SIZE) {
-    throw new Error(
-      `Palette overflow: encountered more than ${MAX_PALETTE_SIZE} unique colors`
-    );
+    let nearestIndex = 0;
+    let nearestDistance = Infinity;
+    for (let i = 0; i < palette.length; i += 1) {
+      const existing = palette[i];
+      const dr = existing[0] - normalized[0];
+      const dg = existing[1] - normalized[1];
+      const db = existing[2] - normalized[2];
+      const da = existing[3] - normalized[3];
+      const distance = dr * dr + dg * dg + db * db + da * da;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = i;
+        if (distance === 0) {
+          break;
+        }
+      }
+    }
+    lookup.set(key, nearestIndex);
+    return nearestIndex;
   }
 
   const index = palette.length;

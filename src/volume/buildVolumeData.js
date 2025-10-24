@@ -27,8 +27,14 @@ export const buildVolumeData = async (
   const depth = slices.length;
   const depthIndices = buildDepthIndices(depth);
   const targetDepth = depthIndices.length;
-  const { palette, lookup } = materialPaletteFromMap(materialColorMap);
-  const paletteLookup = { lookup, materialMap: materialColorMap };
+  const useMaterialMap = materialColorMap !== null && materialColorMap !== undefined;
+  const { palette, lookup } = useMaterialMap
+    ? materialPaletteFromMap(materialColorMap)
+    : { palette: [], lookup: new Map() };
+  const paletteLookup = {
+    lookup,
+    materialMap: useMaterialMap ? materialColorMap : null,
+  };
   const { canvas, ctx } = createCanvasContext();
 
   const state = {
@@ -63,7 +69,10 @@ export const buildVolumeData = async (
     throw new Error("Failed to build volume texture data.");
   }
 
-  const clearColor = materialColorMap[CLEAR_MATERIAL_KEY];
+  const clearColor =
+    useMaterialMap && materialColorMap
+      ? materialColorMap[CLEAR_MATERIAL_KEY]
+      : null;
   const clearKey = clearColor ? serializePaletteColor(clearColor) : null;
   const clearPaletteIndex =
     clearKey && lookup.has(clearKey) ? lookup.get(clearKey) : -1;

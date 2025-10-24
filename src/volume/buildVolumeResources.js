@@ -24,10 +24,15 @@ const createVolumeTexture = (data, dimensions) => {
 export const buildVolumeResources = async (
   slices,
   onProgress,
-  materialColorMap = MATERIAL_COLOR_MAP,
+  materialColorMap,
   blendRadius = 0
 ) => {
   if (!slices?.length) return null;
+
+  const effectiveMaterialMap =
+    materialColorMap === null
+      ? null
+      : materialColorMap || MATERIAL_COLOR_MAP;
 
   const {
     data,
@@ -35,7 +40,7 @@ export const buildVolumeResources = async (
     voxelDimensions,
     clearPaletteIndex,
     missingColors,
-  } = await buildVolumeData(slices, onProgress, materialColorMap);
+  } = await buildVolumeData(slices, onProgress, effectiveMaterialMap);
 
   const volumeTexture = createVolumeTexture(data, voxelDimensions);
   const blendedVolumeTexture = createBlendedVolumeTexture(

@@ -7,14 +7,16 @@ export const addPaletteSample = (
   missingSamples,
   localMissing
 ) => {
-  const mapped = mapMaterialColor(
-    color[0],
-    color[1],
-    color[2],
-    color[3],
-    missingSamples,
-    localMissing,
-    paletteLookup.materialMap
-  );
+  const mapped = paletteLookup.materialMap
+    ? mapMaterialColor(
+        color[0],
+        color[1],
+        color[2],
+        color[3],
+        missingSamples,
+        localMissing,
+        paletteLookup.materialMap
+      )
+    : color;
   return ensurePaletteEntry(paletteLookup.lookup, palette, mapped);
 };
