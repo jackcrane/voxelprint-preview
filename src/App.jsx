@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { VoxelPreview } from "./components/VoxelPreview.jsx";
 import { SLICE_MODE_LAYER_HEIGHT_NM } from "./constants/volume.js";
 import { parseGCVF } from "./utils/parseGCVF.js";
 import { extractZip } from "./utils/extractZip.js";
+import { Pane } from "tweakpane";
 
 const DEFAULT_SLICE_SETTINGS = {
   XDpi: 600,
@@ -41,6 +42,74 @@ const readImageDimensions = async (file) => {
 
 export const App = () => {
   const [modelData, setModelData] = useState(null);
+  const paneContainerRef = useRef(null);
+  const paneInstanceRef = useRef(null);
+  const paneDataFolderRef = useRef(null);
+  const dataStatusRef = useRef(null);
+  const gcvfInputRef = useRef(null);
+  const sliceFolderInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!paneContainerRef.current || paneInstanceRef.current) return;
+    paneInstanceRef.current = new Pane({
+      title: "Voxel Preview",
+      container: paneContainerRef.current,
+      expanded: true,
+    });
+    return () => {
+      paneInstanceRef.current?.dispose();
+      paneInstanceRef.current = null;
+      paneDataFolderRef.current = null;
+      dataStatusRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!paneInstanceRef.current || paneDataFolderRef.current) return;
+    const pane = paneInstanceRef.current;
+    const folder = pane.addFolder({ title: "Data" });
+
+    const handleGcvfClick = () => gcvfInputRef.current?.click();
+    const handleSliceClick = () => sliceFolderInputRef.current?.click();
+
+    const gcvfButton = folder.addButton({ title: "Load GCVF (.gcvf)" });
+    gcvfButton.on("click", handleGcvfClick);
+
+    const slicesButton = folder.addButton({ title: "Load PNG Folder" });
+    slicesButton.on("click", handleSliceClick);
+
+    const statusParams = {
+      status: "No model loaded",
+    };
+    const statusBinding = folder.addBinding(statusParams, "status", {
+      label: "Current",
+      readonly: true,
+    });
+
+    paneDataFolderRef.current = folder;
+    dataStatusRef.current = { params: statusParams, binding: statusBinding };
+
+    return () => {
+      statusBinding.dispose();
+      folder.dispose();
+      paneDataFolderRef.current = null;
+      dataStatusRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!dataStatusRef.current) return;
+    const { params, binding } = dataStatusRef.current;
+    if (!modelData) {
+      params.status = "No model loaded";
+    } else {
+      const sliceCount = modelData.slices?.length ?? 0;
+      const modeLabel =
+        modelData.colorMode === "material" ? "Material mode" : "Direct mode";
+      params.status = `${sliceCount} slices · ${modeLabel}`;
+    }
+    binding.refresh();
+  }, [modelData]);
 
   const handleGcvfUpload = async (event) => {
     const file = event.target.files?.[0];
@@ -119,25 +188,64 @@ export const App = () => {
   };
 
   return (
-    <div style={{ padding: 16, background: "#ffffff", minHeight: "100vh" }}>
-      <h1 style={{ marginTop: 0 }}>GCVF Viewer</h1>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontWeight: 600 }}>GCVF archive (.gcvf)</span>
-          <input type="file" accept=".gcvf" onChange={handleGcvfUpload} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontWeight: 600 }}>Folder of slice PNGs</span>
-          <input
-            type="file"
-            directory="true"
-            webkitdirectory="true"
-            multiple
-            onChange={handleSliceFolderUpload}
-          />
-        </label>
-      </div>
-      {modelData && <VoxelPreview config={modelData} />}
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        overflow: "hidden",
+        position: "relative",
+        background: "#0f0f0f",
+      }}
+    >
+      <div
+        ref={paneContainerRef}
+        style={{
+          position: "fixed",
+          top: 16,
+          right: 16,
+          zIndex: 10,
+        }}
+      />
+
+      <input
+        id="gcvf-upload-input"
+        name="gcvf-upload"
+        ref={gcvfInputRef}
+        type="file"
+        accept=".gcvf"
+        onChange={handleGcvfUpload}
+        style={{ display: "none" }}
+      />
+      <input
+        id="slice-folder-input"
+        name="slice-folder"
+        ref={sliceFolderInputRef}
+        type="file"
+        directory="true"
+        webkitdirectory="true"
+        multiple
+        onChange={handleSliceFolderUpload}
+        style={{ display: "none" }}
+      />
+
+      {modelData ? (
+        <VoxelPreview config={modelData} controlPane={paneInstanceRef.current} />
+      ) : (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#e0e0e0",
+            fontSize: 18,
+            letterSpacing: 0.5,
+          }}
+        >
+          Use the pane to load a GCVF file or PNG slice folder.
+        </div>
+      )}
     </div>
   );
 };

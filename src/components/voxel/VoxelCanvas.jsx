@@ -37,7 +37,7 @@ export const VoxelCanvas = ({
       near: 0.01,
       far: Math.max(diag * 6, 10_000),
     }}
-    style={{ width: "100%", height: "80vh", background: "#ffffff" }}
+    style={{ width: "100%", height: "100vh", background: "#ffffff" }}
     onCreated={({ gl, scene, camera }) => {
       gl.setClearColor("#ffffff", 1);
       scene.background = new THREE.Color("#ffffff");
