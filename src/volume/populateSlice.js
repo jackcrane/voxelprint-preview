@@ -20,6 +20,44 @@ const initializeDimensions = (state, asset) => {
   state.canvas.height = asset.height;
 };
 
+const selectDominantColor = (pixels, width, xStart, xEnd, yStart, yEnd) => {
+  const colorCounts = new Map();
+  let bestEntry = null;
+
+  for (let sourceY = yStart; sourceY < yEnd; sourceY += 1) {
+    const rowOffset = sourceY * width;
+    for (let sourceX = xStart; sourceX < xEnd; sourceX += 1) {
+      const pixelIndex = (rowOffset + sourceX) * 4;
+      const r = pixels[pixelIndex];
+      const g = pixels[pixelIndex + 1];
+      const b = pixels[pixelIndex + 2];
+      const a = pixels[pixelIndex + 3];
+      const key = `${r},${g},${b},${a}`;
+      let entry = colorCounts.get(key);
+      if (!entry) {
+        entry = {
+          count: 0,
+          color: [r, g, b, a],
+          isTransparent: a === 0,
+        };
+        colorCounts.set(key, entry);
+      }
+      entry.count += 1;
+      if (
+        !bestEntry ||
+        entry.count > bestEntry.count ||
+        (entry.count === bestEntry.count &&
+          entry.isTransparent &&
+          !bestEntry.isTransparent)
+      ) {
+        bestEntry = entry;
+      }
+    }
+  }
+
+  return bestEntry ? bestEntry.color : [0, 0, 0, 0];
+};
+
 export const populateSlice = async (
   targetZ,
   depthIndices,
@@ -49,24 +87,27 @@ export const populateSlice = async (
   const imageData = state.ctx.getImageData(0, 0, state.width, state.height);
   const pixels = imageData.data;
   const localMissing = new Set();
-  const sliceOffset =
-    targetZ * state.targetWidth * state.targetHeight;
+  const sliceOffset = targetZ * state.targetWidth * state.targetHeight;
 
   for (let targetY = 0; targetY < state.targetHeight; targetY += 1) {
-    const sourceY = Math.min(targetY * state.yStep, state.height - 1);
+    const sourceYStart = targetY * state.yStep;
+    const sourceYEnd = Math.min(sourceYStart + state.yStep, state.height);
     const rowBase = sliceOffset + targetY * state.targetWidth;
     for (let targetX = 0; targetX < state.targetWidth; targetX += 1) {
-      const sourceX = Math.min(targetX * state.xStep, state.width - 1);
-      const pixelIndex = (sourceY * state.width + sourceX) * 4;
+      const sourceXStart = targetX * state.xStep;
+      const sourceXEnd = Math.min(sourceXStart + state.xStep, state.width);
+      const blockColor = selectDominantColor(
+        pixels,
+        state.width,
+        sourceXStart,
+        sourceXEnd,
+        sourceYStart,
+        sourceYEnd
+      );
       const paletteIndex = addPaletteSample(
         paletteLookup,
         palette,
-        [
-          pixels[pixelIndex],
-          pixels[pixelIndex + 1],
-          pixels[pixelIndex + 2],
-          pixels[pixelIndex + 3],
-        ],
+        blockColor,
         missingSamples,
         localMissing
       );

@@ -1,4 +1,8 @@
-import { MAX_LOGGED_MISSING, MAX_PALETTE_SIZE } from "../constants/materials";
+import {
+  COLOR_SIMILARITY_DISTANCE_SQ,
+  MAX_LOGGED_MISSING,
+  MAX_PALETTE_SIZE,
+} from "../constants/materials";
 
 export const clampByte = (value) => Math.max(0, Math.min(255, Math.round(value)));
 
@@ -43,33 +47,47 @@ export const mapMaterialColor = (
   return [r, g, b, a];
 };
 
-export const ensurePaletteEntry = (lookup, palette, color) => {
+export const ensurePaletteEntry = (
+  lookup,
+  palette,
+  color,
+  options = {}
+) => {
   const normalized = normalizePaletteColor(color);
   const key = normalized.join(",");
   if (lookup.has(key)) {
     return lookup.get(key);
   }
 
-  if (palette.length >= MAX_PALETTE_SIZE) {
-    let nearestIndex = 0;
-    let nearestDistance = Infinity;
-    for (let i = 0; i < palette.length; i += 1) {
-      const existing = palette[i];
-      const dr = existing[0] - normalized[0];
-      const dg = existing[1] - normalized[1];
-      const db = existing[2] - normalized[2];
-      const da = existing[3] - normalized[3];
-      const distance = dr * dr + dg * dg + db * db + da * da;
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestIndex = i;
-        if (distance === 0) {
-          break;
-        }
+  const { mergeDistanceSq = COLOR_SIMILARITY_DISTANCE_SQ } = options;
+  let nearestIndex = -1;
+  let nearestDistance = Infinity;
+
+  for (let i = 0; i < palette.length; i += 1) {
+    const existing = palette[i];
+    const dr = existing[0] - normalized[0];
+    const dg = existing[1] - normalized[1];
+    const db = existing[2] - normalized[2];
+    const da = existing[3] - normalized[3];
+    const distance = dr * dr + dg * dg + db * db + da * da;
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = i;
+      if (distance === 0) {
+        break;
       }
     }
+  }
+
+  if (mergeDistanceSq > 0 && nearestDistance <= mergeDistanceSq) {
     lookup.set(key, nearestIndex);
     return nearestIndex;
+  }
+
+  if (palette.length >= MAX_PALETTE_SIZE) {
+    const fallbackIndex = Math.max(0, nearestIndex);
+    lookup.set(key, fallbackIndex);
+    return fallbackIndex;
   }
 
   const index = palette.length;
@@ -82,7 +100,7 @@ export const materialPaletteFromMap = (materialColorMap) => {
   const palette = [];
   const lookup = new Map();
   Object.values(materialColorMap).forEach((rgba) => {
-    ensurePaletteEntry(lookup, palette, rgba);
+    ensurePaletteEntry(lookup, palette, rgba, { mergeDistanceSq: 0 });
   });
   return { palette, lookup };
 };
