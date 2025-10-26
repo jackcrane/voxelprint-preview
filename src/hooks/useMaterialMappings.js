@@ -68,6 +68,14 @@ export const useMaterialMappings = (enabled = true) => {
     }));
   }, []);
 
+  const closeMappingModal = useCallback(() => {
+    setMappingModalVisible(false);
+  }, []);
+
+  const openMappingModal = useCallback(() => {
+    setMappingModalVisible(true);
+  }, []);
+
   const canApplyMaterialMappings = useMemo(() => {
     if (!pendingMissingColors.length) {
       return false;
@@ -112,7 +120,7 @@ export const useMaterialMappings = (enabled = true) => {
     handleMissingMaterials,
     handleMaterialSelectionChange,
     applyMaterialMappings,
-    closeMappingModal: () => setMappingModalVisible(false),
-    openMappingModal: () => setMappingModalVisible(true),
+    closeMappingModal,
+    openMappingModal,
   };
 };

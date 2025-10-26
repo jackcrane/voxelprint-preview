@@ -4,6 +4,7 @@ import { SLICE_MODE_LAYER_HEIGHT_NM } from "./constants/volume.js";
 import { parseGCVF } from "./utils/parseGCVF.js";
 import { extractZip } from "./utils/extractZip.js";
 import { Pane } from "tweakpane";
+import "./styles/tweakpane.css";
 
 const DEFAULT_SLICE_SETTINGS = {
   XDpi: 600,

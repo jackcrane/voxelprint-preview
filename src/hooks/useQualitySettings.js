@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 const clampQuality = (value) => Math.max(50, Math.min(150, value));
 
@@ -25,10 +25,13 @@ export const useQualitySettings = (baseFullSteps) => {
     return "Balanced";
   }, [qualityPct]);
 
-  const updateQuality = (value) => {
-    if (!Number.isFinite(value)) return;
-    setQualityPct(clampQuality(value));
-  };
+  const updateQuality = useCallback(
+    (value) => {
+      if (!Number.isFinite(value)) return;
+      setQualityPct(clampQuality(value));
+    },
+    [setQualityPct]
+  );
 
   return {
     qualityPct,
