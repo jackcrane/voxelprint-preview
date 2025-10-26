@@ -24,9 +24,15 @@ export const VolumeStage = ({
   alphaImpactMin,
   alphaImpactMax,
   onLoadingStateChange,
+  renderScaleStepMultiplier,
 }) => {
   const { resources, loading, progress, error, stats, missingColors } =
-    useVolumeResources(slices, materialColorMap, BLEND_RADIUS_STEPS);
+    useVolumeResources(
+      slices,
+      materialColorMap,
+      BLEND_RADIUS_STEPS,
+      renderScaleStepMultiplier
+    );
 
   useEffect(() => {
     if (onStatsChange) {

@@ -7,6 +7,7 @@ export const useVolumeResourceLoader = (
   slices,
   materialColorMap,
   blendRadius,
+  renderScaleStepMultiplier = 1,
   { onReset, onStart, onProgress, onSuccess, onError, onFinish },
   resourcesRef
 ) => {
@@ -33,7 +34,8 @@ export const useVolumeResourceLoader = (
             }
           },
           materialColorMap,
-          blendRadius
+          blendRadius,
+          renderScaleStepMultiplier
         );
 
         if (!built) {
@@ -67,6 +69,7 @@ export const useVolumeResourceLoader = (
     slices,
     materialColorMap,
     blendRadius,
+    renderScaleStepMultiplier,
     onReset,
     onStart,
     onProgress,

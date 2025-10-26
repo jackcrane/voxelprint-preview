@@ -21,7 +21,8 @@ const createCanvasContext = () => {
 export const buildVolumeData = async (
   slices,
   onProgress,
-  materialColorMap = MATERIAL_COLOR_MAP
+  materialColorMap = MATERIAL_COLOR_MAP,
+  renderScaleStepMultiplier = 1
 ) => {
   const missingSamples = new Set();
   const depth = slices.length;
@@ -47,7 +48,8 @@ export const buildVolumeData = async (
     data: null,
     canvas,
     ctx,
-    computeStep: computeDownsampleStep,
+    computeStep: (size) =>
+      computeDownsampleStep(size, Math.max(1, renderScaleStepMultiplier)),
   };
 
   for (let targetZ = 0; targetZ < targetDepth; targetZ += 1) {

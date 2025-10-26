@@ -25,7 +25,8 @@ export const buildVolumeResources = async (
   slices,
   onProgress,
   materialColorMap,
-  blendRadius = 0
+  blendRadius = 0,
+  renderScaleStepMultiplier = 1
 ) => {
   if (!slices?.length) return null;
 
@@ -40,7 +41,12 @@ export const buildVolumeResources = async (
     voxelDimensions,
     clearPaletteIndex,
     missingColors,
-  } = await buildVolumeData(slices, onProgress, effectiveMaterialMap);
+  } = await buildVolumeData(
+    slices,
+    onProgress,
+    effectiveMaterialMap,
+    renderScaleStepMultiplier
+  );
 
   const volumeTexture = createVolumeTexture(data, voxelDimensions);
   const blendedVolumeTexture = createBlendedVolumeTexture(

@@ -38,6 +38,7 @@ export const VoxelCanvas = ({
   onStatsChange,
   onMissingMaterials,
   onLoadingStateChange,
+  renderScaleStepMultiplier,
 }) => {
   const canvasBackground = backgroundColor || "#ffffff";
 
@@ -97,6 +98,7 @@ export const VoxelCanvas = ({
         onMissingMaterials={onMissingMaterials}
         diag={diag}
         onLoadingStateChange={onLoadingStateChange}
+        renderScaleStepMultiplier={renderScaleStepMultiplier}
       />
     </Canvas>
   );

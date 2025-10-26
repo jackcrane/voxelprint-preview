@@ -19,7 +19,12 @@ const computeStats = (resource) => {
 
 const toMessage = (err) => (err instanceof Error ? err.message : String(err));
 
-export const useVolumeResources = (slices, materialColorMap, blendRadius) => {
+export const useVolumeResources = (
+  slices,
+  materialColorMap,
+  blendRadius,
+  renderScaleStepMultiplier = 1
+) => {
   const [resources, setResources] = useState(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -61,6 +66,7 @@ export const useVolumeResources = (slices, materialColorMap, blendRadius) => {
     slices,
     materialColorMap,
     blendRadius,
+    renderScaleStepMultiplier,
     {
       onReset: reset,
       onStart: start,

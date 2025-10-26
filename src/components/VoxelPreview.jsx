@@ -7,12 +7,14 @@ import React, {
 } from "react";
 
 import {
+  DEFAULT_RENDER_SCALE,
   GCVF_ALPHA_IMPACT_DEFAULT,
   GCVF_ALPHA_IMPACT_MAX,
   GCVF_ALPHA_IMPACT_MIN,
   LAYER_ALPHA_IMPACT_DEFAULT,
   LAYER_ALPHA_IMPACT_MAX,
   LAYER_ALPHA_IMPACT_MIN,
+  RENDER_SCALE_OPTIONS,
 } from "../constants/volume.js";
 import { MATERIAL_DEFINITIONS } from "../constants/materials.js";
 import { computeVolumeMetrics } from "../utils/volumeMetrics.js";
@@ -21,6 +23,18 @@ import { useMaterialMappings } from "../hooks/useMaterialMappings.js";
 import { useQualitySettings } from "../hooks/useQualitySettings.js";
 import { MaterialMappingModal } from "./voxel/MaterialMappingModal.jsx";
 import { VoxelCanvas } from "./voxel/VoxelCanvas.jsx";
+
+const RENDER_SCALE_LOOKUP = new Map(
+  RENDER_SCALE_OPTIONS.map((option) => [option.label, option])
+);
+
+const RENDER_SCALE_BINDING_OPTIONS = RENDER_SCALE_OPTIONS.reduce(
+  (acc, option) => {
+    acc[option.label] = option.label;
+    return acc;
+  },
+  {}
+);
 
 const formatMemory = (bytes) => {
   if (!Number.isFinite(bytes) || bytes <= 0) return "—";
@@ -77,6 +91,7 @@ export const VoxelPreview = ({ config, controlPane, backgroundColor }) => {
     loading: false,
     progress: 0,
   });
+  const [renderScale, setRenderScale] = useState(DEFAULT_RENDER_SCALE);
 
   const pendingMissingColors = materialMappingEnabled
     ? mappings.pendingMissingColors
@@ -88,11 +103,13 @@ export const VoxelPreview = ({ config, controlPane, backgroundColor }) => {
     : null;
 
   const updateQuality = quality.updateQuality;
+  const renderScaleStepMultiplier = renderScale?.xyStepMultiplier ?? 1;
 
   const latestValuesRef = useRef({
     yMax: 1,
     qualityPct: 100,
     alphaImpact: alphaImpactConfig.defaultValue,
+    renderScale: DEFAULT_RENDER_SCALE.label,
   });
 
   const paneControlsRef = useRef({
@@ -103,6 +120,7 @@ export const VoxelPreview = ({ config, controlPane, backgroundColor }) => {
       quality: 100,
       blend: true,
       alphaImpact: alphaImpactConfig.defaultValue,
+      renderScale: DEFAULT_RENDER_SCALE.label,
     },
     controlBindings: {},
     stats: {
@@ -121,6 +139,7 @@ export const VoxelPreview = ({ config, controlPane, backgroundColor }) => {
     slice: false,
     quality: false,
     alpha: false,
+    renderScale: false,
   });
 
   const handleAlphaImpactChange = useCallback(
@@ -189,6 +208,19 @@ export const VoxelPreview = ({ config, controlPane, backgroundColor }) => {
   }, [alphaImpact]);
 
   useEffect(() => {
+    latestValuesRef.current.renderScale = renderScale.label;
+    if (controlUpdatePendingRef.current.renderScale) {
+      controlUpdatePendingRef.current.renderScale = false;
+      return;
+    }
+    const binding = paneControlsRef.current.controlBindings.renderScale;
+    if (binding) {
+      paneControlsRef.current.params.renderScale = renderScale.label;
+      binding.refresh();
+    }
+  }, [renderScale]);
+
+  useEffect(() => {
     if (!controlPane) return undefined;
     const ref = paneControlsRef.current;
 
@@ -211,6 +243,7 @@ export const VoxelPreview = ({ config, controlPane, backgroundColor }) => {
 
     const folder = controlPane.addFolder({ title: "Preview Settings" });
     ref.folder = folder;
+    ref.params.renderScale = latestValuesRef.current.renderScale;
 
     const sliceBinding = folder.addBinding(ref.params, "slice", {
       label: "Slice Height",
@@ -270,6 +303,21 @@ export const VoxelPreview = ({ config, controlPane, backgroundColor }) => {
       handleAlphaImpactChange(parsed);
     });
 
+    const renderScaleBinding = folder.addBinding(ref.params, "renderScale", {
+      label: "Render Scale",
+      options: RENDER_SCALE_BINDING_OPTIONS,
+    });
+    renderScaleBinding.on("change", (event) => {
+      const nextOption = RENDER_SCALE_LOOKUP.get(event.value);
+      if (!nextOption) {
+        ref.params.renderScale = latestValuesRef.current.renderScale;
+        renderScaleBinding.refresh();
+        return;
+      }
+      controlUpdatePendingRef.current.renderScale = true;
+      setRenderScale(nextOption);
+    });
+
     let mappingButton = null;
     if (materialMappingEnabled && openMappingModal) {
       mappingButton = folder.addButton({ title: "Map Materials" });
@@ -283,6 +331,7 @@ export const VoxelPreview = ({ config, controlPane, backgroundColor }) => {
       quality: qualityBinding,
       blend: blendBinding,
       alphaImpact: alphaBinding,
+      renderScale: renderScaleBinding,
     };
     ref.mappingButton = mappingButton;
 
@@ -470,6 +519,7 @@ export const VoxelPreview = ({ config, controlPane, backgroundColor }) => {
             materialMappingEnabled ? mappings.handleMissingMaterials : undefined
           }
           onLoadingStateChange={handleLoadingStateChange}
+          renderScaleStepMultiplier={renderScaleStepMultiplier}
         />
       </div>
     </>

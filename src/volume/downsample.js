@@ -1,7 +1,10 @@
 import { TARGET_AXIS_RESOLUTION } from "../constants/volume.js";
 
-export const computeDownsampleStep = (size) =>
-  Math.max(1, Math.ceil(size / TARGET_AXIS_RESOLUTION));
+export const computeDownsampleStep = (size, xyStepMultiplier = 1) =>
+  Math.max(
+    1,
+    Math.ceil((size / TARGET_AXIS_RESOLUTION) * Math.max(1, xyStepMultiplier))
+  );
 
 export const buildDepthIndices = (depth) => {
   const step = computeDownsampleStep(depth);
