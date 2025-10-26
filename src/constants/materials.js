@@ -1,9 +1,14 @@
 export const MATERIAL_DEFINITIONS = [
   { key: "0 255 255 255", rgba: [0, 255, 255, 140], name: "VeroCY-V" },
+  { key: "0 137 166 255", rgba: [0, 255, 255, 140], name: "VeroCY-V" },
   { key: "255 0 255 255", rgba: [255, 0, 255, 200], name: "VeroMGT-V" },
+  { key: "198 0 88 255", rgba: [255, 0, 0, 100], name: "VeroMGT-V" },
   { key: "255 255 0 255", rgba: [255, 255, 0, 100], name: "VeroYL-C" },
+  { key: "240 197 0 255", rgba: [240, 197, 0, 100], name: "VeroYL-C" },
   { key: "0 0 0 255", rgba: [0, 0, 0, 0], name: "VOID" },
   { key: "137 137 137 255", rgba: [137, 137, 137, 0.02], name: "UltraClear" },
+  { key: "0 255 0 255", rgba: [137, 137, 137, 0.02], name: "UltraClear" },
+  { key: "255 0 0 255", rgba: [137, 137, 137, 0.02], name: "UltraClear" },
   {
     key: "255 255 255 255",
     rgba: [255, 255, 255, 255],

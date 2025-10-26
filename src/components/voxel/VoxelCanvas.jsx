@@ -50,15 +50,15 @@ export const VoxelCanvas = ({
       onStart={onInteraction}
       onChange={onInteraction}
       onEnd={onInteraction}
+      enableDamping={false}
     />
 
-    {/* <Environment preset="city" /> */}
-    {/* <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
+    <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
       <GizmoViewport
         axisColors={["#9d4b4b", "#2f7f4f", "#3b5b9d"]}
         labelColor="white"
       />
-    </GizmoHelper> */}
+    </GizmoHelper>
 
     <ambientLight intensity={1} />
     <directionalLight position={[2, 4, 3]} intensity={1} />

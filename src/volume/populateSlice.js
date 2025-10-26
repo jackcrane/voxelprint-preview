@@ -85,7 +85,8 @@ export const populateSlice = async (
   for (let targetY = 0; targetY < state.targetHeight; targetY += 1) {
     const sourceYStart = targetY * state.yStep;
     const sourceYEnd = Math.min(sourceYStart + state.yStep, state.height);
-    const rowBase = sliceOffset + targetY * state.targetWidth;
+    const flippedY = state.targetHeight - 1 - targetY;
+    const rowBase = sliceOffset + flippedY * state.targetWidth;
     for (let targetX = 0; targetX < state.targetWidth; targetX += 1) {
       const sourceXStart = targetX * state.xStep;
       const sourceXEnd = Math.min(sourceXStart + state.xStep, state.width);
