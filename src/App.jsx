@@ -6,6 +6,8 @@ import { extractZip } from "./utils/extractZip.js";
 import { Pane } from "tweakpane";
 import "./styles/tweakpane.css";
 
+const DEFAULT_BACKGROUND_COLOR = "#f2f2f2";
+
 const DEFAULT_SLICE_SETTINGS = {
   XDpi: 600,
   YDpi: 600,
@@ -43,10 +45,18 @@ const readImageDimensions = async (file) => {
 
 export const App = () => {
   const [modelData, setModelData] = useState(null);
+  const [backgroundColor, setBackgroundColor] = useState(
+    DEFAULT_BACKGROUND_COLOR
+  );
   const paneContainerRef = useRef(null);
   const paneInstanceRef = useRef(null);
   const paneDataFolderRef = useRef(null);
   const dataStatusRef = useRef(null);
+  const paneAppearanceRef = useRef({
+    folder: null,
+    binding: null,
+    params: { background: DEFAULT_BACKGROUND_COLOR },
+  });
   const gcvfInputRef = useRef(null);
   const sliceFolderInputRef = useRef(null);
 
@@ -97,6 +107,43 @@ export const App = () => {
       dataStatusRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!paneInstanceRef.current || paneAppearanceRef.current.folder) return;
+    const pane = paneInstanceRef.current;
+    const appearanceFolder = pane.addFolder({ title: "Appearance" });
+    const backgroundBinding = appearanceFolder.addBinding(
+      paneAppearanceRef.current.params,
+      "background",
+      {
+        label: "Background",
+      }
+    );
+
+    backgroundBinding.on("change", (event) => {
+      const next =
+        typeof event.value === "string" && event.value.trim()
+          ? event.value.trim()
+          : DEFAULT_BACKGROUND_COLOR;
+      setBackgroundColor(next);
+    });
+
+    paneAppearanceRef.current.folder = appearanceFolder;
+    paneAppearanceRef.current.binding = backgroundBinding;
+
+    return () => {
+      backgroundBinding.dispose();
+      appearanceFolder.dispose();
+      paneAppearanceRef.current.folder = null;
+      paneAppearanceRef.current.binding = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!paneAppearanceRef.current.binding) return;
+    paneAppearanceRef.current.params.background = backgroundColor;
+    paneAppearanceRef.current.binding.refresh();
+  }, [backgroundColor]);
 
   useEffect(() => {
     if (!dataStatusRef.current) return;
@@ -195,7 +242,7 @@ export const App = () => {
         height: "100vh",
         overflow: "hidden",
         position: "relative",
-        background: "#0f0f0f",
+        background: backgroundColor,
       }}
     >
       <div
@@ -230,7 +277,11 @@ export const App = () => {
       />
 
       {modelData ? (
-        <VoxelPreview config={modelData} controlPane={paneInstanceRef.current} />
+        <VoxelPreview
+          config={modelData}
+          controlPane={paneInstanceRef.current}
+          backgroundColor={backgroundColor}
+        />
       ) : (
         <div
           style={{
@@ -239,7 +290,7 @@ export const App = () => {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: "#e0e0e0",
+            color: "#828282",
             fontSize: 18,
             letterSpacing: 0.5,
           }}

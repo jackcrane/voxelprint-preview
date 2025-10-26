@@ -42,7 +42,7 @@ const toFiniteNumber = (value) => {
   return null;
 };
 
-export const VoxelPreview = ({ config, controlPane }) => {
+export const VoxelPreview = ({ config, controlPane, backgroundColor }) => {
   const { slices } = config;
   const materialMappingEnabled = config?.colorMode !== "direct";
   const { cameraPosition, diag, volumeScale, baseFullSteps } =
@@ -449,6 +449,7 @@ export const VoxelPreview = ({ config, controlPane }) => {
         <VoxelCanvas
           cameraPosition={cameraPosition}
           diag={diag}
+          backgroundColor={backgroundColor}
           slices={slices}
           volumeScale={volumeScale}
           isInteracting={isInteracting}
