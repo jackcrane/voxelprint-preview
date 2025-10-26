@@ -8,6 +8,7 @@ import { volumeVertexShader, volumeFragmentShader } from "./volumeShaders.js";
 export const VolumeMesh = ({
   resources,
   scale,
+  diag,
   isInteracting,
   previewSteps,
   fullSteps,
@@ -49,13 +50,32 @@ export const VolumeMesh = ({
     });
   }, [resources, fullSteps]);
 
-  useFrame(() => {
+  useFrame((state) => {
     if (!meshRef.current || !material) {
       return;
     }
     material.uniforms.u_modelMatrixInverse.value
       .copy(meshRef.current.matrixWorld)
       .invert();
+
+    const cameraDistance = state.camera.position.length();
+    const referenceDiag =
+      Number.isFinite(diag) && diag > 0
+        ? diag
+        : Math.hypot(scale?.[0] || 1, scale?.[1] || 1, scale?.[2] || 1);
+    const distanceFactor = THREE.MathUtils.clamp(
+      cameraDistance / Math.max(0.001, referenceDiag * 1.1),
+      0.25,
+      1
+    );
+    const baseSteps = isInteracting ? previewSteps : fullSteps;
+    const adaptiveSteps = Math.max(
+      32,
+      Math.round(baseSteps * distanceFactor)
+    );
+    if (material.uniforms.u_steps.value !== adaptiveSteps) {
+      material.uniforms.u_steps.value = adaptiveSteps;
+    }
   });
 
   useEffect(() => {
@@ -65,14 +85,6 @@ export const VolumeMesh = ({
       }
     };
   }, [material]);
-
-  useEffect(() => {
-    if (material) {
-      material.uniforms.u_steps.value = isInteracting
-        ? previewSteps
-        : fullSteps;
-    }
-  }, [material, isInteracting, previewSteps, fullSteps]);
 
   useEffect(() => {
     if (material) {

@@ -78,6 +78,7 @@ export const VoxelCanvas = ({
       materialColorMap={materialColorMap}
       onStatsChange={onStatsChange}
       onMissingMaterials={onMissingMaterials}
+      diag={diag}
     />
   </Canvas>
 );

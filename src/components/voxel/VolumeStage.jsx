@@ -11,6 +11,7 @@ import { VolumeMesh } from "./VolumeMesh.jsx";
 export const VolumeStage = ({
   slices,
   scale,
+  diag,
   isInteracting,
   previewSteps,
   fullSteps,
@@ -57,6 +58,7 @@ export const VolumeStage = ({
           alphaImpact={alphaImpact}
           alphaImpactMin={alphaImpactMin}
           alphaImpactMax={alphaImpactMax}
+          diag={diag}
         />
       )}
       {!resources && loading && (

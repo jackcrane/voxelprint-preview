@@ -20,42 +20,32 @@ const initializeDimensions = (state, asset) => {
   state.canvas.height = asset.height;
 };
 
-const selectDominantColor = (pixels, width, xStart, xEnd, yStart, yEnd) => {
-  const colorCounts = new Map();
-  let bestEntry = null;
-
-  for (let sourceY = yStart; sourceY < yEnd; sourceY += 1) {
-    const rowOffset = sourceY * width;
-    for (let sourceX = xStart; sourceX < xEnd; sourceX += 1) {
-      const pixelIndex = (rowOffset + sourceX) * 4;
-      const r = pixels[pixelIndex];
-      const g = pixels[pixelIndex + 1];
-      const b = pixels[pixelIndex + 2];
-      const a = pixels[pixelIndex + 3];
-      const key = `${r},${g},${b},${a}`;
-      let entry = colorCounts.get(key);
-      if (!entry) {
-        entry = {
-          count: 0,
-          color: [r, g, b, a],
-          isTransparent: a === 0,
-        };
-        colorCounts.set(key, entry);
-      }
-      entry.count += 1;
-      if (
-        !bestEntry ||
-        entry.count > bestEntry.count ||
-        (entry.count === bestEntry.count &&
-          entry.isTransparent &&
-          !bestEntry.isTransparent)
-      ) {
-        bestEntry = entry;
-      }
-    }
-  }
-
-  return bestEntry ? bestEntry.color : [0, 0, 0, 0];
+const sampleBlockColor = (
+  pixels,
+  width,
+  height,
+  xStart,
+  xEnd,
+  yStart,
+  yEnd,
+  outColor
+) => {
+  // Sample the pixel at the center of the block (clamped to edges) to avoid
+  // traversing every source pixel. This trades fidelity for a large speedup.
+  const sampleY =
+    yStart >= yEnd
+      ? Math.min(yStart, height - 1)
+      : Math.min(yEnd - 1, yStart + ((yEnd - yStart) >> 1));
+  const sampleX =
+    xStart >= xEnd
+      ? Math.min(xStart, width - 1)
+      : Math.min(xEnd - 1, xStart + ((xEnd - xStart) >> 1));
+  const pixelIndex = (sampleY * width + sampleX) * 4;
+  outColor[0] = pixels[pixelIndex];
+  outColor[1] = pixels[pixelIndex + 1];
+  outColor[2] = pixels[pixelIndex + 2];
+  outColor[3] = pixels[pixelIndex + 3];
+  return outColor;
 };
 
 export const populateSlice = async (
@@ -88,6 +78,9 @@ export const populateSlice = async (
   const pixels = imageData.data;
   const localMissing = new Set();
   const sliceOffset = targetZ * state.targetWidth * state.targetHeight;
+  if (!state.sampleColor) {
+    state.sampleColor = new Uint8ClampedArray(4);
+  }
 
   for (let targetY = 0; targetY < state.targetHeight; targetY += 1) {
     const sourceYStart = targetY * state.yStep;
@@ -96,13 +89,15 @@ export const populateSlice = async (
     for (let targetX = 0; targetX < state.targetWidth; targetX += 1) {
       const sourceXStart = targetX * state.xStep;
       const sourceXEnd = Math.min(sourceXStart + state.xStep, state.width);
-      const blockColor = selectDominantColor(
+      const blockColor = sampleBlockColor(
         pixels,
         state.width,
+        state.height,
         sourceXStart,
         sourceXEnd,
         sourceYStart,
-        sourceYEnd
+        sourceYEnd,
+        state.sampleColor
       );
       const paletteIndex = addPaletteSample(
         paletteLookup,
