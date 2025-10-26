@@ -23,6 +23,7 @@ export const VolumeStage = ({
   alphaImpact,
   alphaImpactMin,
   alphaImpactMax,
+  onLoadingStateChange,
 }) => {
   const { resources, loading, progress, error, stats, missingColors } =
     useVolumeResources(slices, materialColorMap, BLEND_RADIUS_STEPS);
@@ -38,6 +39,12 @@ export const VolumeStage = ({
       onMissingMaterials(missingColors || []);
     }
   }, [missingColors, onMissingMaterials]);
+
+  useEffect(() => {
+    if (onLoadingStateChange) {
+      onLoadingStateChange({ loading, progress });
+    }
+  }, [loading, progress, onLoadingStateChange]);
 
   const showCrossSection = yMax < 0.999;
 
@@ -61,24 +68,8 @@ export const VolumeStage = ({
           diag={diag}
         />
       )}
-      {!resources && loading && (
-        <Html position={[0, 0, 0]} transform center>
-          <div
-            style={{
-              padding: "8px 12px",
-              background: "rgba(0, 0, 0, 0.6)",
-              color: "#fff",
-              borderRadius: 4,
-              fontSize: 12,
-              whiteSpace: "nowrap",
-            }}
-          >
-            Building volume… {progress}%
-          </div>
-        </Html>
-      )}
       {error && (
-        <Html position={[0, 0, 0]} transform center>
+        <Html position={[0, 0, 0]} center>
           <div
             style={{
               padding: "8px 12px",

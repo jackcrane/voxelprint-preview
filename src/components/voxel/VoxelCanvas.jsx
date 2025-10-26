@@ -29,6 +29,7 @@ export const VoxelCanvas = ({
   materialColorMap,
   onStatsChange,
   onMissingMaterials,
+  onLoadingStateChange,
 }) => (
   <Canvas
     camera={{
@@ -79,6 +80,7 @@ export const VoxelCanvas = ({
       onStatsChange={onStatsChange}
       onMissingMaterials={onMissingMaterials}
       diag={diag}
+      onLoadingStateChange={onLoadingStateChange}
     />
   </Canvas>
 );

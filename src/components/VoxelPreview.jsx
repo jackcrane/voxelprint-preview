@@ -73,6 +73,10 @@ export const VoxelPreview = ({ config, controlPane }) => {
   const [alphaImpact, setAlphaImpact] = useState(
     alphaImpactConfig.defaultValue
   );
+  const [volumeLoading, setVolumeLoading] = useState({
+    loading: false,
+    progress: 0,
+  });
 
   const pendingMissingColors = materialMappingEnabled
     ? mappings.pendingMissingColors
@@ -107,6 +111,7 @@ export const VoxelPreview = ({ config, controlPane }) => {
       voxels: "—",
       total: "—",
       palette: "—",
+      status: "Idle",
     },
     statBindings: {},
     mappingButton: null,
@@ -131,6 +136,10 @@ export const VoxelPreview = ({ config, controlPane }) => {
     },
     [alphaImpactConfig]
   );
+
+  const handleLoadingStateChange = useCallback((state) => {
+    setVolumeLoading(state);
+  }, []);
 
   useEffect(() => {
     setAlphaImpact(alphaImpactConfig.defaultValue);
@@ -300,6 +309,10 @@ export const VoxelPreview = ({ config, controlPane }) => {
       label: "Palette Size",
       readonly: true,
     });
+    const statusBinding = statsFolder.addBinding(ref.stats, "status", {
+      label: "Volume",
+      readonly: true,
+    });
 
     ref.statBindings = {
       fps: fpsBinding,
@@ -307,6 +320,7 @@ export const VoxelPreview = ({ config, controlPane }) => {
       voxels: voxelsBinding,
       total: totalBinding,
       palette: paletteBinding,
+      status: statusBinding,
     };
 
     return () => {
@@ -399,6 +413,22 @@ export const VoxelPreview = ({ config, controlPane }) => {
     ref.statBindings.palette?.refresh();
   }, [stats]);
 
+  useEffect(() => {
+    const ref = paneControlsRef.current;
+    if (!ref.statBindings.status) return;
+    let label = "Idle";
+    if (volumeLoading.loading) {
+      const pct = Number.isFinite(volumeLoading.progress)
+        ? Math.round(volumeLoading.progress)
+        : 0;
+      label = `Building volume… ${pct}%`;
+    } else if (stats) {
+      label = "Ready";
+    }
+    ref.stats.status = label;
+    ref.statBindings.status.refresh();
+  }, [volumeLoading, stats]);
+
   return (
     <>
       {materialMappingEnabled &&
@@ -438,6 +468,7 @@ export const VoxelPreview = ({ config, controlPane }) => {
           onMissingMaterials={
             materialMappingEnabled ? mappings.handleMissingMaterials : undefined
           }
+          onLoadingStateChange={handleLoadingStateChange}
         />
       </div>
     </>
