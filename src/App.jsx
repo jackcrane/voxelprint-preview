@@ -5,6 +5,7 @@ import { parseGCVF } from "./utils/parseGCVF.js";
 import { extractZip } from "./utils/extractZip.js";
 import { Pane } from "tweakpane";
 import "./styles/tweakpane.css";
+import slucamlogo from "./slucam-logo-color.png";
 
 const DEFAULT_BACKGROUND_COLOR = "#f2f2f2";
 
@@ -254,6 +255,35 @@ export const App = () => {
           zIndex: 10,
         }}
       />
+
+      <div
+        style={{
+          position: "absolute",
+          bottom: 10,
+          left: 10,
+          fontSize: 12,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "left",
+          gap: 12,
+          zIndex: 100,
+        }}
+      >
+        <span>
+          A project by Jack Crane [
+          <a href="https://github.com/jackcrane">github</a>] [
+          <a href="https://linkedin.com/jackcranee">linkedin</a>] [
+          <a href="mailto:jack.crane@slu.edu">email</a>]
+        </span>
+        <div>
+          <img
+            src={slucamlogo}
+            style={{
+              height: 50,
+            }}
+          />
+        </div>
+      </div>
 
       <input
         id="gcvf-upload-input"
